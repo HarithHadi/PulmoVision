@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RAD-DINO TB Localizer</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #0f0f0f; color: #e0e0e0; min-height: 100vh; padding: 2rem; }
+  h1 { font-size: 1.2rem; font-weight: 500; margin-bottom: 1.5rem; color: #fff; }
+  .drop-zone {
+    border: 1.5px dashed #444;
+    border-radius: 12px;
+    padding: 2.5rem;
+    text-align: center;
+    cursor: pointer;
+    background: #1a1a1a;
+    transition: background 0.15s, border-color 0.15s;
+    margin-bottom: 1rem;
+  }
+  .drop-zone:hover, .drop-zone.drag-over { background: #222; border-color: #666; }
+  .drop-zone p { font-size: 14px; color: #888; margin-top: 6px; }
+  .drop-zone strong { font-size: 15px; color: #ccc; font-weight: 500; }
+  .url-row { display: flex; gap: 8px; margin-bottom: 10px; }
+  .url-row input {
+    flex: 1; background: #1a1a1a; border: 1px solid #333;
+    border-radius: 8px; padding: 8px 12px; color: #e0e0e0;
+    font-size: 13px; outline: none;
+  }
+  .url-row input:focus { border-color: #555; }
+  button {
+    background: #222; border: 1px solid #444; border-radius: 8px;
+    color: #e0e0e0; padding: 8px 18px; font-size: 13px;
+    cursor: pointer; transition: background 0.15s;
+    white-space: nowrap;
+  }
+  button:hover { background: #2e2e2e; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .status {
+    padding: 10px 14px; border-radius: 8px;
+    font-size: 13px; margin-bottom: 12px; display: none;
+  }
+  .status.show { display: flex; align-items: center; gap: 10px; }
+  .status.loading { background: #0d2b45; color: #60aaff; border: 1px solid #1a4a7a; }
+  .status.error { background: #2d1010; color: #ff6b6b; border: 1px solid #5a2020; }
+  .status.success { background: #0d2d1a; color: #4dcc80; border: 1px solid #1a5a33; }
+  .spinner {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid currentColor; border-top-color: transparent;
+    animation: spin 0.7s linear infinite; flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+  .panel { border-radius: 10px; border: 1px solid #2a2a2a; overflow: hidden; background: #111; }
+  .panel-header { padding: 10px 14px; border-bottom: 1px solid #2a2a2a; font-size: 11px; font-weight: 500; color: #666; letter-spacing: 0.06em; text-transform: uppercase; }
+  .panel-body { position: relative; aspect-ratio: 1; background: #050505; }
+  .panel-body img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .placeholder { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #333; font-size: 12px; }
+  .legend {
+    margin-top: 12px; border-radius: 8px; border: 1px solid #2a2a2a;
+    padding: 12px 16px; background: #1a1a1a;
+    display: none; align-items: center; gap: 16px;
+  }
+  .legend.show { display: flex; }
+  .legend-bar { flex: 1; height: 10px; border-radius: 5px; background: linear-gradient(to right, #30123b, #4454c4, #1f9f88, #a2da37, #fdc527, #f05b12, #7a0403); }
+  .legend-label { font-size: 11px; color: #555; white-space: nowrap; }
+  .alpha-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .alpha-row label { font-size: 13px; color: #888; white-space: nowrap; }
+  .alpha-row input[type=range] { flex: 1; accent-color: #555; }
+  .alpha-val { font-size: 13px; font-weight: 500; min-width: 32px; color: #ccc; }
+</style>
+</head>
+<body>
+
+<h1>RAD-DINO TB Localizer</h1>
+
+<div class="drop-zone" id="dropZone">
+  <strong id="dropLabel">Drop a chest X-ray here</strong>
+  <p id="dropSub">or click to browse — PNG or JPG</p>
+  <input type="file" id="fileInput" accept="image/*" style="display:none">
+</div>
+
+<div class="url-row">
+  <input type="text" id="apiUrl" value="http://localhost:8000/diagnoseTB" placeholder="Backend URL">
+  <button id="analyzeBtn" disabled>Analyze</button>
+</div>
+
+<div class="alpha-row">
+  <label>Overlay opacity</label>
+  <input type="range" id="alphaSlider" min="0" max="100" value="55" step="1">
+  <span class="alpha-val" id="alphaVal">55%</span>
+</div>
+
+<div class="status" id="statusBar">
+  <div class="spinner" id="spinner"></div>
+  <span id="statusMsg"></span>
+</div>
+
+<div class="panels" id="panels" style="display:none">
+  <div class="panel">
+    <div class="panel-header">Original</div>
+    <div class="panel-body"><img id="origImg" src="" alt="original"></div>
+  </div>
+  <div class="panel">
+    <div class="panel-header">RAD-DINO attention heatmap</div>
+    <div class="panel-body" id="overlayPanel">
+      <div class="placeholder" id="placeholder">Run analysis to see heatmap</div>
+      <img id="overlayImg" src="" alt="heatmap" style="display:none">
+    </div>
+  </div>
+</div>
+
+<div class="legend" id="legend">
+  <span class="legend-label">Low activation</span>
+  <div class="legend-bar"></div>
+  <span class="legend-label">High activation</span>
+</div>
+
+<script>
+  const dropZone = document.getElementById('dropZone');
+  const fileInput = document.getElementById('fileInput');
+  const analyzeBtn = document.getElementById('analyzeBtn');
+  const apiUrl = document.getElementById('apiUrl');
+  const statusBar = document.getElementById('statusBar');
+  const statusMsg = document.getElementById('statusMsg');
+  const spinner = document.getElementById('spinner');
+  const panels = document.getElementById('panels');
+  const legend = document.getElementById('legend');
+  const origImg = document.getElementById('origImg');
+  const overlayImg = document.getElementById('overlayImg');
+  const placeholder = document.getElementById('placeholder');
+  const alphaSlider = document.getElementById('alphaSlider');
+  const alphaVal = document.getElementById('alphaVal');
+  const dropLabel = document.getElementById('dropLabel');
+  const dropSub = document.getElementById('dropSub');
+
+  let currentFile = null;
+
+  alphaSlider.addEventListener('input', () => alphaVal.textContent = alphaSlider.value + '%');
+  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault(); dropZone.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f && f.type.startsWith('image/')) loadFile(f);
+  });
+  fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadFile(fileInput.files[0]); });
+
+  function loadFile(file) {
+    currentFile = file;
+    const reader = new FileReader();
+    reader.onload = e => {
+      origImg.src = e.target.result;
+      panels.style.display = 'grid';
+      legend.classList.remove('show');
+      overlayImg.style.display = 'none';
+      placeholder.style.display = 'flex';
+      dropLabel.textContent = file.name;
+      dropSub.textContent = (file.size / 1024).toFixed(0) + ' KB — ready to analyze';
+      analyzeBtn.disabled = false;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  analyzeBtn.addEventListener('click', async () => {
+    if (!currentFile) return;
+    setStatus('loading', 'Sending image to RAD-DINO…');
+    analyzeBtn.disabled = true;
+
+    const formData = new FormData();
+    formData.append('file', currentFile);
+
+    try {
+      const res = await fetch(apiUrl.value, {
+        method: 'POST',
+        headers: { 'ngrok-skip-browser-warning': 'true' },
+        body: formData
+      });
+      if (!res.ok) throw new Error('Server returned ' + res.status);
+      const data = await res.json();
+      overlayImg.src = 'data:image/png;base64,' + data.overlay_image;
+      overlayImg.style.display = 'block';
+      placeholder.style.display = 'none';
+      legend.classList.add('show');
+      setStatus('success', `${data.prediction} — TB: ${data.tb_probability}% | Normal: ${data.normal_probability}%`);
+    } catch (err) {
+      setStatus('error', 'Error: ' + err.message);
+    } finally {
+      analyzeBtn.disabled = false;
+    }
+  });
+
+  function setStatus(type, msg) {
+    statusBar.className = 'status show ' + type;
+    statusMsg.textContent = msg;
+    spinner.style.display = type === 'loading' ? 'block' : 'none';
+  }
+</script>
+</body>
+</html>
