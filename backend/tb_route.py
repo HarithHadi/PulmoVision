@@ -109,12 +109,9 @@ class RADDINOClassifier(nn.Module):
         grid = int(cam.shape[0] ** 0.5)
         cam  = cam.reshape(grid, grid).detach().cpu().numpy()
 
-        lo, hi = cam.min(), cam.max()
-        if hi - lo > 1e-8:
-            cam = (cam - lo) / (hi - lo)
-        else:
-            print("WARNING: CAM is flat — gradients may be vanishing.")
-
+        lo  = np.percentile(cam, 60)   # ignore bottom 60%
+        hi  = np.percentile(cam, 99)   # clip top 1% outliers
+        cam = np.clip((cam - lo) / (hi - lo + 1e-8), 0, 1)
         # Re-freeze backbone
         for param in self.backbone.parameters():
             param.requires_grad = False
@@ -157,7 +154,7 @@ async def diagnose_tb(file: UploadFile = File(...)):
     colored_rgb = cv2.cvtColor(colored, cv2.COLOR_BGR2RGB)
 
     orig_np = np.array(image.convert("RGB"), dtype=np.float32)
-    blended = (0.45 * orig_np + 0.55 * colored_rgb.astype(np.float32)).clip(0, 255).astype(np.uint8)
+    blended = (0.35 * orig_np + 0.65 * colored_rgb.astype(np.float32)).clip(0, 255).astype(np.uint8)
 
     buf = io.BytesIO()
     Image.fromarray(blended).save(buf, format="PNG")

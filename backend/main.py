@@ -3,6 +3,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
+
+
 app = FastAPI()
 
 app.add_middleware(
@@ -14,6 +16,9 @@ app.add_middleware(
 
 from tb_route import router as tb_router
 app.include_router(tb_router)
+
+from diagnose_route import router as diagnose_router
+app.include_router(diagnose_router)
 
 @app.get("/")
 def serve_html():

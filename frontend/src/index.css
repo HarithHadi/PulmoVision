@@ -1,45 +1,72 @@
 @import "tailwindcss";
+/* ========================================
+   DESIGN TOKENS
+======================================== */
 
 @theme {
-  /* This lets you use your custom colors like 'text-accent' in HTML */
-  --color-accent: #aa3bff;
-  --color-brand-bg: #fff;
+  /* Backgrounds */
+  --color-background: #ffffff;
+  --color-surface: #f8fafc;
+  --color-surface-2: #f1f5f9;
+
+  /* Text */
+  --color-foreground: #0f172a;
+  --color-muted: #475569;
+  --color-muted-2: #64748b;
+
+  /* Borders */
+  --color-border: #e2e8f0;
+  --color-border-hover: #c7cbd1;
+
+  /* Brand */
+  --color-primary: #ea580c;
+  --color-primary-hover: #c2410c;
+
+  /* States */
+  --color-success: #16a34a;
+  --color-warning: #ca8a04;
+  --color-danger: #dc2626;
+
+  /* Focus ring */
+  --color-ring: #fdba74;
+
+  /* Radius */
+  --radius-card: 1rem;
+  --radius-button: 0.75rem;
 }
 
-:root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+/* ========================================
+   BASE STYLES
+======================================== */
 
-  color-scheme: light dark;
-  color: #213547;
-  background-color: #ffffff;
+@layer base {
+  html {
+    color-scheme: light;
+  }
 
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
 
-/* Dark mode support */
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f9fafb;
-    background-color: #111827;
+  * {
+    @apply border-border;
+  }
+
+  button {
+    @apply transition-all duration-200;
+  }
+
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
   }
 }
 
-body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
-}
-
-#root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+.btn-primary {
+  @apply bg-primary hover:bg-primary-hover
+         text-white font-semibold
+         rounded-button
+         transition-all duration-200;
 }
