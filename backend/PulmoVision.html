@@ -181,7 +181,9 @@
   let currentFile = null;
   let previewDataUrl = null;
 
-  const API_URL = 'http://localhost:8000/report';
+ const API_URL = 'https://humorous-headache-reenter.ngrok-free.dev/report';
+
+
 
   const steps = [
     'Initializing RAD-DINO...',
@@ -245,7 +247,11 @@
     form.append('file', currentFile);
 
     try {
-      const res  = await fetch(API_URL, { method: 'POST', body: form });
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'ngrok-skip-browser-warning': 'true' },
+        body: form
+      });
       if (!res.ok) throw new Error('Server error ' + res.status);
       const data = await res.json();
       stopSteps();
