@@ -1,11 +1,15 @@
 """
-PulmoVision — Unified Diagnose Route
-======================================
-Keeps the EXACT same RAD-DINO + GradCAM logic from tb_route.py.
-After GradCAM, patch tokens are passed through BiomedCLIP alignment
-and C-Abstractor to produce LLaMA-3 visual tokens.
-
-RAD-DINO runs ONCE — patch tokens are reused for both GradCAM and C-Abstractor.
+PulmoVision — Full Report Route
+=================================
+POST /report
+    Input:  chest X-ray image
+    Output: {
+        prediction,
+        tb_probability,
+        normal_probability,
+        overlay_image,      ← base64 PNG heatmap
+        report,             ← generated radiology report text
+    }
 """
 
 import io
@@ -18,21 +22,24 @@ from PIL import Image
 from pathlib import Path
 from fastapi import UploadFile, File, APIRouter
 from torchvision import transforms
-from transformers import AutoModel
+from transformers import AutoModel, AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+from peft import PeftModel
 
 router = APIRouter()
 
-# ── Config ────────────────────────────────────────────────────────────────────
 DEVICE        = "cuda" if torch.cuda.is_available() else "cpu"
 IMAGE_SIZE    = 518
 PATCH_SIZE    = 14
-GRID_SIZE     = IMAGE_SIZE // PATCH_SIZE   # 37
-N_PATCHES     = GRID_SIZE * GRID_SIZE       # 1369
+GRID_SIZE     = IMAGE_SIZE // PATCH_SIZE
+N_PATCHES     = GRID_SIZE * GRID_SIZE
 RAD_DINO_DIM  = 768
 CLIP_DIM      = 512
 LLAMA_DIM     = 4096
 N_OUT_TOKENS  = 64
 MODEL_SAVE    = Path("tb_classifier (5).pt")
+STAGE1_PATH   = Path("pulmovision_stage1.pt")
+LORA_PATH     = Path("lora_weights")
+LLAMA_MODEL   = "meta-llama/Meta-Llama-3-8B-Instruct"
 
 preprocess = transforms.Compose([
     transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
@@ -47,8 +54,7 @@ class CAbstractor(nn.Module):
                  n_tokens=N_OUT_TOKENS, grid=GRID_SIZE):
         super().__init__()
         self.grid      = grid
-        self.pool_size = int(n_tokens ** 0.5)  # 8
-
+        self.pool_size = int(n_tokens ** 0.5)
         self.spatial_conv = nn.Sequential(
             nn.Conv2d(in_dim, in_dim, kernel_size=3, padding=1, groups=in_dim),
             nn.Conv2d(in_dim, in_dim, kernel_size=1),
@@ -64,18 +70,17 @@ class CAbstractor(nn.Module):
         )
 
     def forward(self, x):
-        # x: [B, N_PATCHES, CLIP_DIM]
         B, N, D = x.shape
         x = x.permute(0, 2, 1).reshape(B, D, self.grid, self.grid)
         x = self.spatial_conv(x)
         x = self.pool(x)
         x = x.flatten(2).permute(0, 2, 1)
-        return self.proj(x)  # [B, N_OUT_TOKENS, LLAMA_DIM]
+        return self.proj(x)
 
 
-# ── RAD-DINO Classifier (EXACT same as tb_route.py) ──────────────────────────
+# ── TB Classifier ─────────────────────────────────────────────────────────────
 class RADDINOClassifier(nn.Module):
-    def __init__(self, num_classes: int = 2):
+    def __init__(self, num_classes=2):
         super().__init__()
         self.backbone = AutoModel.from_pretrained(
             "microsoft/rad-dino", trust_remote_code=True
@@ -91,20 +96,16 @@ class RADDINOClassifier(nn.Module):
             nn.Dropout(0.3),
             nn.Linear(256, num_classes),
         )
-
         self._gradients   = None
         self._activations = None
         self._register_hooks()
-
-        # Alignment + C-Abstractor on top
-        self.align_proj  = nn.Linear(RAD_DINO_DIM, CLIP_DIM, bias=False)
+        self.align_proj   = nn.Linear(RAD_DINO_DIM, CLIP_DIM, bias=False)
         self.c_abstractor = CAbstractor()
 
     def _register_hooks(self):
         last_layer = self.backbone.encoder.layer[-1]
 
         def forward_hook(module, input, output):
-            # NO .detach() — same as tb_route.py
             self._activations = output[0] if isinstance(output, tuple) else output
 
         def backward_hook(module, grad_input, grad_output):
@@ -120,13 +121,7 @@ class RADDINOClassifier(nn.Module):
         return self.head(cls_token)
 
     def run_pipeline(self, pixel_values):
-        """
-        EXACT same GradCAM as tb_route.py.
-        Reuses the patch tokens for C-Abstractor — RAD-DINO runs ONCE.
-        """
         self.eval()
-
-        # Re-enable gradients — same as tb_route.py
         for param in self.backbone.parameters():
             param.requires_grad = True
 
@@ -138,82 +133,83 @@ class RADDINOClassifier(nn.Module):
         probs  = logits.softmax(dim=-1)
 
         self.zero_grad()
-        logits[0, 1].backward()  # TB class — same as tb_route.py
+        logits[0, 1].backward()
 
-        if self._gradients is None or self._activations is None:
-            raise RuntimeError("GradCAM hooks did not fire.")
+        cls_grad   = self._gradients[0, 0, :]
+        patch_acts = self._activations[0, 1:, :]
 
-        print(f"Grads norm: {self._gradients.norm():.6f}")
-
-        # ── EXACT same GradCAM formula as tb_route.py ─────────────────────
-        cls_grad   = self._gradients[0, 0, :]       # [D]
-        patch_acts = self._activations[0, 1:, :]    # [N_patches, D]
-
-        print(f"CLS grad norm: {cls_grad.norm():.6f}")
-
-        cam = (patch_acts * cls_grad).sum(dim=-1)   # [N_patches]
-        cam = torch.relu(cam)
-
-        print(f"CAM raw: min={cam.min():.6f}, max={cam.max():.6f}")
-
+        cam      = (patch_acts * cls_grad).sum(dim=-1)
+        cam      = torch.relu(cam)
         cam_grid = cam.reshape(GRID_SIZE, GRID_SIZE).detach().cpu().numpy()
 
-        # ── EXACT same normalisation as tb_route.py ───────────────────────
         lo       = np.percentile(cam_grid, 60)
         hi       = np.percentile(cam_grid, 99)
         cam_norm = np.clip((cam_grid - lo) / (hi - lo + 1e-8), 0, 1)
 
-        # ── C-Abstractor (new — reuses patch_acts, no second RAD-DINO) ────
-        # Use GradCAM weights as attention mask on patch tokens
-        cam_weights  = cam / (cam.mean() + 1e-8)            # [N_patches]
-        cam_weights  = cam_weights.unsqueeze(-1)             # [N_patches, 1]
-        weighted     = (patch_acts.detach() * cam_weights)   # [N_patches, D]
-        weighted     = weighted.unsqueeze(0)                  # [1, N_patches, D]
+        cam_weights = cam / (cam.mean() + 1e-8)
+        cam_weights = cam_weights.unsqueeze(-1)
+        weighted    = (patch_acts.detach() * cam_weights).unsqueeze(0)
 
-        # Align RAD-DINO dim → CLIP dim
-        clip_patches = self.align_proj(weighted)             # [1, N_patches, 512]
-
-        # C-Abstractor → LLaMA tokens
+        clip_patches  = self.align_proj(weighted)
         with torch.no_grad():
-            visual_tokens = self.c_abstractor(clip_patches)  # [1, 64, 4096]
+            visual_tokens = self.c_abstractor(clip_patches)
 
-        # Re-freeze backbone — same as tb_route.py
         for param in self.backbone.parameters():
             param.requires_grad = False
 
         return {
             "probs":         probs[0].detach().cpu().numpy(),
-            "cam_norm":      cam_norm,        # [37, 37] for overlay
-            "visual_tokens": visual_tokens,   # [1, 64, 4096] for LLaMA
+            "cam_norm":      cam_norm,
+            "visual_tokens": visual_tokens,
         }
 
 
-# ── Load model at startup ─────────────────────────────────────────────────────
-print("Loading PulmoVision model...")
-model = RADDINOClassifier().to(DEVICE)
-
-# Load TB classifier weights
-model.load_state_dict(
+# ── Load models at startup ────────────────────────────────────────────────────
+print("Loading RAD-DINO classifier...")
+classifier = RADDINOClassifier().to(DEVICE)
+classifier.load_state_dict(
     torch.load(MODEL_SAVE, map_location=DEVICE, weights_only=False),
     strict=False
 )
+if STAGE1_PATH.exists():
+    stage1 = torch.load(STAGE1_PATH, map_location=DEVICE, weights_only=False)
+    classifier.align_proj.load_state_dict(stage1["align_proj"])
+    classifier.c_abstractor.load_state_dict(stage1["c_abstractor"])
+    print(f"Stage 1 loaded (val_loss={stage1['val_loss']:.4f})")
+classifier.eval()
+print("Classifier ready.")
 
-# Load trained Stage 1 C-Abstractor weights
-stage1_path = Path("pulmovision_stage1.pt")
-if stage1_path.exists():
-    stage1 = torch.load(stage1_path, map_location=DEVICE, weights_only=False)
-    model.align_proj.load_state_dict(stage1["align_proj"])
-    model.c_abstractor.load_state_dict(stage1["c_abstractor"])
-    print(f"Stage 1 weights loaded (val_loss={stage1['val_loss']:.4f})")
+print("Loading LLaMA-3 + LoRA...")
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_compute_dtype=torch.float16,
+    bnb_4bit_use_double_quant=True,
+)
+tokenizer = AutoTokenizer.from_pretrained(
+    str(LORA_PATH) if LORA_PATH.exists() else LLAMA_MODEL
+)
+tokenizer.pad_token    = tokenizer.eos_token
+tokenizer.padding_side = "right"
+
+llama_base = AutoModelForCausalLM.from_pretrained(
+    LLAMA_MODEL,
+    quantization_config=bnb_config,
+    device_map="auto",
+)
+if LORA_PATH.exists():
+    llama = PeftModel.from_pretrained(llama_base, str(LORA_PATH))
+    print("LoRA weights loaded.")
 else:
-    print("Stage 1 checkpoint not found — using random weights for C-Abstractor.")
+    llama = llama_base
+    print("WARNING: lora_weights/ not found — using base LLaMA-3.")
 
-model.eval()
-print("PulmoVision model ready.")
+llama.eval()
+print("LLaMA-3 ready.")
 
 
+# ── Helpers ───────────────────────────────────────────────────────────────────
 def build_overlay(image: Image.Image, cam_norm: np.ndarray) -> str:
-    """EXACT same overlay as tb_route.py."""
     orig_w, orig_h = image.size
     cam_uint8   = (cam_norm * 255).astype(np.uint8)
     cam_resized = cv2.resize(cam_uint8, (orig_w, orig_h), interpolation=cv2.INTER_CUBIC)
@@ -226,21 +222,37 @@ def build_overlay(image: Image.Image, cam_norm: np.ndarray) -> str:
     return base64.b64encode(buf.getvalue()).decode()
 
 
-def serialize_tokens(tokens: torch.Tensor) -> str:
-    buf = io.BytesIO()
-    torch.save(tokens.cpu(), buf)
-    return base64.b64encode(buf.getvalue()).decode()
+def generate_report(visual_tokens: torch.Tensor) -> str:
+    instruction = (
+        "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n"
+        "You are an expert radiologist. Analyze the chest X-ray and "
+        "generate a structured radiology report.<|eot_id|>"
+        "<|start_header_id|>user<|end_header_id|>\n"
+        "Describe the findings and impression for this chest X-ray.<|eot_id|>"
+        "<|start_header_id|>assistant<|end_header_id|>\n"
+    )
+    inst_ids    = tokenizer(instruction, return_tensors="pt").input_ids.to(DEVICE)
+    text_embeds = llama.model.model.embed_tokens(inst_ids).float()
+    combined    = torch.cat([visual_tokens.float(), text_embeds], dim=1)
+
+    with torch.no_grad():
+        output_ids = llama.generate(
+            inputs_embeds=combined,
+            max_new_tokens=300,
+            do_sample=False,
+            repetition_penalty=1.1,
+        )
+    return tokenizer.decode(output_ids[0], skip_special_tokens=True)
 
 
 # ── Route ─────────────────────────────────────────────────────────────────────
-@router.post("/diagnose")
-async def diagnose(file: UploadFile = File(...)):
+@router.post("/report")
+async def report(file: UploadFile = File(...)):
     content = await file.read()
     image   = Image.open(io.BytesIO(content)).convert("RGB")
     tensor  = preprocess(image).unsqueeze(0).to(DEVICE)
 
-    results = model.run_pipeline(tensor)
-
+    results       = classifier.run_pipeline(tensor)
     probs         = results["probs"]
     cam_norm      = results["cam_norm"]
     visual_tokens = results["visual_tokens"]
@@ -249,37 +261,15 @@ async def diagnose(file: UploadFile = File(...)):
     pred_class  = int(probs.argmax())
 
     print(f"Prediction: {label_names[pred_class]} ({probs[1]*100:.1f}% TB)")
-    print(f"Visual tokens shape: {list(visual_tokens.shape)}")
+    print("Generating report...")
+
+    report_text = generate_report(visual_tokens)
+    print("Report generated.")
 
     return {
         "prediction":         label_names[pred_class],
         "tb_probability":     round(float(probs[1]) * 100, 2),
         "normal_probability": round(float(probs[0]) * 100, 2),
         "overlay_image":      build_overlay(image, cam_norm),
-        "visual_tokens":      serialize_tokens(visual_tokens),
-        "token_shape":        list(visual_tokens.shape),
-    }
-
-@router.post("/debugTokens")
-async def debug_tokens(file: UploadFile = File(...)):
-    content = await file.read()
-    image   = Image.open(io.BytesIO(content)).convert("RGB")
-    tensor  = preprocess(image).unsqueeze(0).to(DEVICE)
-
-    results       = model.run_pipeline(tensor)
-    visual_tokens = results["visual_tokens"]  # [1, 64, 4096]
-
-    t = visual_tokens[0]  # [64, 4096]
-
-    return {
-        "shape":        list(t.shape),
-        "n_tokens":     t.shape[0],
-        "token_dim":    t.shape[1],
-        "mean":         round(float(t.mean()), 6),
-        "std":          round(float(t.std()), 6),
-        "min":          round(float(t.min()), 6),
-        "max":          round(float(t.max()), 6),
-        # First 3 tokens, first 16 dims each — readable preview
-        "token_preview": t[:3, :16].tolist(),
-        "note": "64 vectors of 4096 floats each. Prepend to LLaMA-3 input_embeds."
+        "report":             report_text,
     }

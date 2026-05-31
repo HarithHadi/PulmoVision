@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PulmoVision — TB Report</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #0d1117; color: #e2e8f0; min-height: 100vh; }
+
+  nav { border-bottom: 1px solid #1e293b; background: #0d1117/80; padding: 0 2rem; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; backdrop-filter: blur(8px); }
+  .logo { display: flex; align-items: center; gap: 10px; }
+  .logo-icon { width: 28px; height: 28px; background: #2563eb; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+  .logo-icon svg { width: 16px; height: 16px; color: white; }
+  .logo-text { font-weight: 600; font-size: 15px; color: white; }
+  .nav-badge { font-size: 11px; color: #64748b; border: 1px solid #1e293b; border-radius: 6px; padding: 3px 10px; }
+
+  .page { max-width: 960px; margin: 0 auto; padding: 2.5rem 1.5rem; }
+
+  .hero { margin-bottom: 2.5rem; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; color: #60a5fa; background: #1e3a5f; border: 1px solid #2563eb33; border-radius: 20px; padding: 3px 12px; margin-bottom: 14px; }
+  .hero h1 { font-size: 2rem; font-weight: 700; color: white; margin-bottom: 8px; }
+  .hero p { font-size: 14px; color: #64748b; max-width: 500px; line-height: 1.6; }
+
+  .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 700px) { .layout { grid-template-columns: 1fr; } }
+
+  .section-label { font-size: 11px; font-weight: 600; color: #475569; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 12px; }
+
+  .drop-zone { border: 2px dashed #334155; border-radius: 16px; padding: 2.5rem 1.5rem; text-align: center; cursor: pointer; background: #0f1923; transition: all 0.15s; margin-bottom: 14px; }
+  .drop-zone:hover, .drop-zone.drag { border-color: #3b82f6; background: #0f1f35; }
+  .drop-icon { width: 52px; height: 52px; border-radius: 14px; background: #1e293b; border: 1px solid #334155; display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; }
+  .drop-icon svg { width: 22px; height: 22px; color: #64748b; }
+  .drop-title { font-size: 14px; font-weight: 500; color: #cbd5e1; margin-bottom: 4px; }
+  .drop-sub { font-size: 12px; color: #475569; }
+  .file-ready { font-size: 14px; font-weight: 500; color: #e2e8f0; }
+  .file-size { font-size: 12px; color: #475569; margin-top: 4px; }
+  .file-change { font-size: 12px; color: #3b82f6; margin-top: 10px; text-decoration: underline; text-underline-offset: 2px; }
+  .check { font-size: 2.5rem; color: #22c55e; margin-bottom: 10px; }
+
+  .btn { width: 100%; padding: 13px; border-radius: 12px; border: none; background: #2563eb; color: white; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.15s; display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 12px; }
+  .btn:hover { background: #1d4ed8; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .spinner { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .info-card { background: #0f1923; border: 1px solid #1e293b; border-radius: 10px; padding: 10px 12px; }
+  .info-label { font-size: 11px; color: #475569; margin-bottom: 2px; }
+  .info-value { font-size: 12px; font-weight: 600; color: #94a3b8; }
+
+  .error { background: #2d1515; border: 1px solid #7f1d1d; color: #fca5a5; padding: 10px 14px; border-radius: 10px; font-size: 13px; margin-bottom: 12px; }
+
+  .empty { border: 2px dashed #1e293b; border-radius: 16px; padding: 3rem 1.5rem; text-align: center; color: #334155; font-size: 13px; }
+  .loading-box { border: 1px solid #1e293b; background: #0f1923; border-radius: 16px; padding: 3rem; text-align: center; }
+  .loading-spinner { width: 32px; height: 32px; border: 2px solid #1e293b; border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.7s linear infinite; margin: 0 auto 14px; }
+  .loading-text { font-size: 13px; color: #475569; }
+  .loading-step { font-size: 11px; color: #334155; margin-top: 6px; }
+
+  .result-wrap { display: flex; flex-direction: column; gap: 14px; }
+
+  .pred-banner { border-radius: 14px; padding: 16px 18px; border: 1px solid; }
+  .pred-banner.tb { background: rgba(45,21,21,0.5); border-color: #7f1d1d; }
+  .pred-banner.normal { background: rgba(15,45,26,0.5); border-color: #14532d; }
+  .pred-top { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+  .pred-label-small { font-size: 11px; color: #64748b; margin-bottom: 2px; }
+  .pred-label { font-size: 22px; font-weight: 700; }
+  .pred-label.tb { color: #fca5a5; }
+  .pred-label.normal { color: #86efac; }
+  .pred-conf { font-size: 28px; font-weight: 700; }
+  .pred-conf.tb { color: #fca5a5; }
+  .pred-conf.normal { color: #86efac; }
+  .pred-conf-label { font-size: 11px; color: #64748b; }
+  .bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .bar-label { font-size: 11px; color: #64748b; width: 48px; flex-shrink: 0; }
+  .bar-track { flex: 1; height: 6px; background: #1e293b; border-radius: 3px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 3px; transition: width 0.7s ease; }
+  .bar-fill.tb { background: linear-gradient(90deg, #dc2626, #ef4444); }
+  .bar-fill.normal { background: linear-gradient(90deg, #16a34a, #22c55e); }
+  .bar-val { font-size: 11px; color: #475569; width: 36px; text-align: right; flex-shrink: 0; }
+
+  .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .panel { border-radius: 10px; border: 1px solid #1e293b; overflow: hidden; background: #050a0f; }
+  .panel-header { padding: 8px 12px; border-bottom: 1px solid #1e293b; font-size: 10px; font-weight: 600; color: #475569; letter-spacing: 0.08em; text-transform: uppercase; }
+  .panel-body { aspect-ratio: 1; }
+  .panel-body img { width: 100%; height: 100%; object-fit: contain; display: block; }
+
+  .legend { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #0f1923; border: 1px solid #1e293b; border-radius: 10px; }
+  .legend-label { font-size: 11px; color: #475569; white-space: nowrap; }
+  .legend-bar { flex: 1; height: 8px; border-radius: 4px; background: linear-gradient(to right, #30123b, #4454c4, #1f9f88, #a2da37, #fdc527, #f05b12, #7a0403); }
+
+  .report-card { background: #0f1923; border: 1px solid #1e293b; border-radius: 14px; padding: 16px 18px; }
+  .report-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .report-title { font-size: 12px; font-weight: 600; color: #475569; letter-spacing: 0.08em; text-transform: uppercase; }
+  .report-badge { font-size: 10px; color: #60a5fa; background: #1e3a5f; border: 1px solid #2563eb33; border-radius: 4px; padding: 2px 8px; }
+  .report-text { font-size: 13px; color: #94a3b8; line-height: 1.8; white-space: pre-wrap; }
+
+  .disclaimer { text-align: center; font-size: 11px; color: #334155; padding-top: 8px; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="logo">
+    <div class="logo-icon">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+    </div>
+    <span class="logo-text">PulmoVision</span>
+  </div>
+  <span class="nav-badge">TB Detection + Report Generation</span>
+</nav>
+
+<div class="page">
+  <div class="hero">
+    <div class="badge">RAD-DINO · GradCAM · LLaMA-3</div>
+    <h1>Tuberculosis Detection</h1>
+    <p>Upload a chest X-ray to detect TB, visualize suspicious regions, and generate an AI radiology report.</p>
+  </div>
+
+  <div class="layout">
+    <!-- Left: Upload -->
+    <div>
+      <div class="section-label">Input</div>
+
+      <div class="drop-zone" id="dropZone">
+        <input type="file" id="fileInput" accept="image/*" style="display:none">
+        <div id="dropContent">
+          <div class="drop-icon">
+            <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+          </div>
+          <p class="drop-title">Drop a chest X-ray here</p>
+          <p class="drop-sub">or click to browse — PNG, JPG</p>
+        </div>
+      </div>
+
+      <button class="btn" id="analyzeBtn" disabled>
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Run Analysis
+      </button>
+
+      <div class="error" id="errorBox" style="display:none"></div>
+
+      <div class="info-grid">
+        <div class="info-card"><div class="info-label">Visual Encoder</div><div class="info-value">RAD-DINO</div></div>
+        <div class="info-card"><div class="info-label">Localization</div><div class="info-value">GradCAM</div></div>
+        <div class="info-card"><div class="info-label">Report Model</div><div class="info-value">LLaMA-3-8B</div></div>
+        <div class="info-card"><div class="info-label">Dataset</div><div class="info-value">Montgomery + Shenzhen</div></div>
+      </div>
+    </div>
+
+    <!-- Right: Results -->
+    <div>
+      <div class="section-label">Results</div>
+
+      <div id="emptyState" class="empty">Results will appear here after analysis</div>
+
+      <div id="loadingState" class="loading-box" style="display:none">
+        <div class="loading-spinner"></div>
+        <p class="loading-text">Running analysis...</p>
+        <p class="loading-step" id="loadingStep">Initializing RAD-DINO</p>
+      </div>
+
+      <div id="resultState" class="result-wrap" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const dropZone    = document.getElementById('dropZone');
+  const fileInput   = document.getElementById('fileInput');
+  const analyzeBtn  = document.getElementById('analyzeBtn');
+  const errorBox    = document.getElementById('errorBox');
+  const emptyState  = document.getElementById('emptyState');
+  const loadingState= document.getElementById('loadingState');
+  const resultState = document.getElementById('resultState');
+  const loadingStep = document.getElementById('loadingStep');
+  const dropContent = document.getElementById('dropContent');
+
+  let currentFile = null;
+  let previewDataUrl = null;
+
+  const API_URL = 'http://localhost:8000/report';
+
+  const steps = [
+    'Initializing RAD-DINO...',
+    'Extracting patch tokens...',
+    'Computing GradCAM heatmap...',
+    'Generating visual tokens...',
+    'LLaMA-3 generating report...',
+    'Almost done...',
+  ];
+  let stepInterval = null;
+
+  function startSteps() {
+    let i = 0;
+    loadingStep.textContent = steps[0];
+    stepInterval = setInterval(() => {
+      i = Math.min(i + 1, steps.length - 1);
+      loadingStep.textContent = steps[i];
+    }, 4000);
+  }
+
+  function stopSteps() {
+    clearInterval(stepInterval);
+  }
+
+  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
+  dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag'); loadFile(e.dataTransfer.files[0]); });
+  fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadFile(fileInput.files[0]); });
+
+  function loadFile(f) {
+    if (!f || !f.type.startsWith('image/')) return;
+    currentFile = f;
+    const reader = new FileReader();
+    reader.onload = e => {
+      previewDataUrl = e.target.result;
+      dropContent.innerHTML = `
+        <div class="check">✓</div>
+        <p class="file-ready">${f.name}</p>
+        <p class="file-size">${(f.size/1024).toFixed(0)} KB — ready to analyze</p>
+        <p class="file-change">Click to change</p>
+      `;
+      analyzeBtn.disabled = false;
+      resultState.style.display = 'none';
+      emptyState.style.display = 'block';
+      errorBox.style.display = 'none';
+    };
+    reader.readAsDataURL(f);
+  }
+
+  analyzeBtn.addEventListener('click', async () => {
+    if (!currentFile) return;
+    analyzeBtn.disabled = true;
+    errorBox.style.display = 'none';
+    emptyState.style.display = 'none';
+    resultState.style.display = 'none';
+    loadingState.style.display = 'block';
+    startSteps();
+
+    const form = new FormData();
+    form.append('file', currentFile);
+
+    try {
+      const res  = await fetch(API_URL, { method: 'POST', body: form });
+      if (!res.ok) throw new Error('Server error ' + res.status);
+      const data = await res.json();
+      stopSteps();
+      loadingState.style.display = 'none';
+      renderResult(data);
+    } catch (err) {
+      stopSteps();
+      loadingState.style.display = 'none';
+      emptyState.style.display = 'block';
+      errorBox.textContent = '⚠ ' + err.message + ' — is the backend running?';
+      errorBox.style.display = 'block';
+    } finally {
+      analyzeBtn.disabled = false;
+    }
+  });
+
+  function renderResult(data) {
+    const isTB    = data.prediction === 'TB';
+    const cls     = isTB ? 'tb' : 'normal';
+    const conf    = isTB ? data.tb_probability : data.normal_probability;
+
+    resultState.innerHTML = `
+      <div class="pred-banner ${cls}">
+        <div class="pred-top">
+          <div>
+            <div class="pred-label-small">Prediction</div>
+            <div class="pred-label ${cls}">${data.prediction}</div>
+          </div>
+          <div style="text-align:right">
+            <div class="pred-conf ${cls}">${conf}%</div>
+            <div class="pred-conf-label">confidence</div>
+          </div>
+        </div>
+        <div class="bar-row">
+          <span class="bar-label">TB</span>
+          <div class="bar-track"><div class="bar-fill tb" style="width:${data.tb_probability}%"></div></div>
+          <span class="bar-val">${data.tb_probability}%</span>
+        </div>
+        <div class="bar-row">
+          <span class="bar-label">Normal</span>
+          <div class="bar-track"><div class="bar-fill normal" style="width:${data.normal_probability}%"></div></div>
+          <span class="bar-val">${data.normal_probability}%</span>
+        </div>
+      </div>
+
+      <div class="panels">
+        <div class="panel">
+          <div class="panel-header">Original</div>
+          <div class="panel-body"><img src="${previewDataUrl}" alt="original"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">GradCAM Heatmap</div>
+          <div class="panel-body"><img src="data:image/png;base64,${data.overlay_image}" alt="heatmap"></div>
+        </div>
+      </div>
+
+      <div class="legend">
+        <span class="legend-label">Low</span>
+        <div class="legend-bar"></div>
+        <span class="legend-label">High</span>
+      </div>
+
+      <div class="report-card">
+        <div class="report-header">
+          <span class="report-title">AI Radiology Report</span>
+          <span class="report-badge">LLaMA-3 · LoRA</span>
+        </div>
+        <div class="report-text">${escapeHtml(data.report)}</div>
+      </div>
+
+      <p class="disclaimer">⚕ For research purposes only. Not a substitute for clinical diagnosis.</p>
+    `;
+    resultState.style.display = 'flex';
+  }
+
+  function escapeHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+</script>
+</body>
+</html>

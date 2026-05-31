@@ -27,3 +27,12 @@ def serve_html():
 @app.get("/items/{item_id}")
 def read_item(item_id: int, q: str | None = None):
     return {"item_id": item_id, "q": q}
+
+
+from report_route import router as report_router
+app.include_router(report_router)
+
+
+@app.get("/pulmovision")
+def serve_pulmovision():
+    return FileResponse("PulmoVision.html")
