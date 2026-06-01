@@ -232,8 +232,8 @@ def generate_report(visual_tokens: torch.Tensor) -> str:
         "<|start_header_id|>assistant<|end_header_id|>\n"
     )
     inst_ids    = tokenizer(instruction, return_tensors="pt").input_ids.to(DEVICE)
-    text_embeds = llama.model.model.embed_tokens(inst_ids).float()
-    combined    = torch.cat([visual_tokens.float(), text_embeds], dim=1)
+    text_embeds = llama.model.model.embed_tokens(inst_ids).to(torch.bfloat16)
+    combined    = torch.cat([visual_tokens.to(torch.bfloat16), text_embeds], dim=1)
 
     with torch.no_grad():
         output_ids = llama.generate(
