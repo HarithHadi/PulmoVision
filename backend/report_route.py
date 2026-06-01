@@ -230,17 +230,30 @@ def generate_report(visual_tokens: torch.Tensor) -> str:
     )
     inst_ids    = tokenizer(instruction, return_tensors="pt").input_ids.to(DEVICE)
     text_embeds = llama.get_input_embeddings()(inst_ids).to(torch.bfloat16)
-    combined    = torch.cat([visual_tokens.to(torch.bfloat16), text_embeds], dim=1)
+    
+    # Match precision
+    visual_tokens = visual_tokens.to(torch.bfloat16)
+    combined      = torch.cat([visual_tokens, text_embeds], dim=1)
+
+    # 🌟 FIX 1: Generate an attention mask of 1s matching the exact sequence length.
+    # This tells LLaMA to pay full attention to both the image tokens and the text prompt.
+    attention_mask = torch.ones(combined.shape[:2], dtype=torch.long, device=DEVICE)
 
     with torch.no_grad():
         output_ids = llama.generate(
             inputs_embeds=combined,
+            attention_mask=attention_mask,          # 🌟 Pass the explicit mask
+            pad_token_id=tokenizer.eos_token_id,    # 🌟 Fix the missing pad ID log warning
             max_new_tokens=300,
-            do_sample=False,
-            repetition_penalty=1.1,
+            
+            # 🌟 FIX 2: Enable sampling to prevent rigid, robotic repeating loops
+            do_sample=True,
+            temperature=0.4,       # Low temperature keeps the language clinical and objective
+            top_p=0.9,
+            repetition_penalty=1.2 # Stronger penalty pushes the model away from repeating strings
         )
+        
     return tokenizer.decode(output_ids[0], skip_special_tokens=True)
-
 
 # ── Route ─────────────────────────────────────────────────────────────────────
 @router.post("/report")
