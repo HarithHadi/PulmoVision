@@ -180,23 +180,20 @@ classifier.eval()
 print("Classifier ready.")
 
 print("Loading LLaMA-3 + LoRA...")
-bnb_config = BitsAndBytesConfig(
-    load_in_4bit=True,
-    bnb_4bit_quant_type="nf4",
-    bnb_4bit_compute_dtype=torch.float16,
-    bnb_4bit_use_double_quant=True,
-)
+
 tokenizer = AutoTokenizer.from_pretrained(
     str(LORA_PATH) if LORA_PATH.exists() else LLAMA_MODEL
 )
 tokenizer.pad_token    = tokenizer.eos_token
 tokenizer.padding_side = "right"
 
+# 🚀 Swapped out 4-bit quantization for full native bfloat16
 llama_base = AutoModelForCausalLM.from_pretrained(
     LLAMA_MODEL,
-    quantization_config=bnb_config,
+    torch_dtype=torch.bfloat16,  # Matches your generate_report precision perfectly!
     device_map="auto",
 )
+
 if LORA_PATH.exists():
     llama = PeftModel.from_pretrained(llama_base, str(LORA_PATH))
     print("LoRA weights loaded.")
@@ -232,7 +229,7 @@ def generate_report(visual_tokens: torch.Tensor) -> str:
         "<|start_header_id|>assistant<|end_header_id|>\n"
     )
     inst_ids    = tokenizer(instruction, return_tensors="pt").input_ids.to(DEVICE)
-    text_embeds = llama.model.model.embed_tokens(inst_ids).to(torch.bfloat16)
+    text_embeds = llama.get_input_embeddings()(inst_ids).to(torch.bfloat16)
     combined    = torch.cat([visual_tokens.to(torch.bfloat16), text_embeds], dim=1)
 
     with torch.no_grad():
