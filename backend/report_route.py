@@ -38,7 +38,7 @@ LLAMA_DIM     = 4096
 N_OUT_TOKENS  = 64
 MODEL_SAVE    = Path("tb_classifier (5).pt")
 STAGE1_PATH   = Path("pulmovision_stage1.pt")
-LORA_PATH     = Path("lora_weights")
+LORA_PATH     = Path("lora_weights(curr)")
 LLAMA_MODEL   = "meta-llama/Meta-Llama-3-8B-Instruct"
 
 preprocess = transforms.Compose([
@@ -187,11 +187,20 @@ tokenizer = AutoTokenizer.from_pretrained(
 tokenizer.pad_token    = tokenizer.eos_token
 tokenizer.padding_side = "right"
 
+# Add this config
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_compute_dtype=torch.bfloat16
+)
+
 # 🚀 Swapped out 4-bit quantization for full native bfloat16
 llama_base = AutoModelForCausalLM.from_pretrained(
     LLAMA_MODEL,
-    torch_dtype=torch.bfloat16,  # Matches your generate_report precision perfectly!
-    device_map="auto",
+    quantization_config=bnb_config,
+    device_map={"": 0},
+    torch_dtype=torch.bfloat16,
+    low_cpu_mem_usage=True,
 )
 
 if LORA_PATH.exists():
@@ -275,6 +284,8 @@ async def report(file: UploadFile = File(...)):
 
     report_text = generate_report(visual_tokens)
     print("Report generated.")
+
+    torch.cuda.empty_cache()
 
     return {
         "prediction":         label_names[pred_class],
