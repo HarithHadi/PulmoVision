@@ -3,3 +3,10 @@
 lora_weights/
 lora_weights(2)/
 lora_weights(curr)/
+*.dat
+
+# Model Cache & Checkpoint Directories
+checkpoint-*/
+results/
+models/
+offload_cache/
