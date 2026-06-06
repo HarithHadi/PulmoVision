@@ -19,10 +19,6 @@ N_OUT_TOKENS  = 64
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# # Add near the top of load_all_models
-# offload_dir = "offload_cache"
-# os.makedirs(offload_dir, exist_ok=True)
-
 #── C-Abstractor ──────────────────────────────────────────────────────────────
 class CAbstractor(nn.Module):
     def __init__(self, in_dim=CLIP_DIM, out_dim=LLAMA_DIM,
@@ -166,46 +162,34 @@ class RADDINOClassifier(nn.Module):
         return {
             "probs":         probs[0].detach().cpu().numpy(),
             "cam_norm":      cam_norm,        # [37, 37] for overlay
-            "visual_tokens": visual_tokens,   # [1, 64, 4096] for LLaMA
+            "visual_tokens": visual_tokens,   # [1, 64, 3072] for LLaMA
         }
 
 def load_all_models(device):
-    # Initialize Classifier
+    # Classifier on GPU
     classifier = RADDINOClassifier().to(device)
-    classifier.load_state_dict(torch.load("tb_classifier (5).pt", map_location=device, weights_only=False), strict=False)
+    classifier.load_state_dict(
+        torch.load("tb_classifier (5).pt", map_location=device, weights_only=False),
+        strict=False
+    )
     classifier.eval()
 
-    # Initialize LLaMA
-    tokenizer = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3-8B-Instruct")
+    tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.2-3B-Instruct")
     tokenizer.pad_token = tokenizer.eos_token
-    
-    # bnb_config = BitsAndBytesConfig(
-    # load_in_4bit=True,
-    # bnb_4bit_quant_type="nf4",
-    # bnb_4bit_compute_dtype=torch.bfloat16,
-    # llm_int8_enable_fp32_cpu_offload=True,
-    # )
 
-    if device == "cuda":
-        device_map = {
-            "model.embed_tokens": 0,
-            "model.norm": "cpu",
-            "lm_head": "cpu",
-            **{f"model.layers.{i}": 0 if i < 8 else "cpu" for i in range(32)} 
-        }
-    else:
-        device_map = None
-
+    # Load entirely on CPU — 4GB GPU is fully used by the classifier
     llama_base = AutoModelForCausalLM.from_pretrained(
-    "meta-llama/Meta-Llama-3-8B-Instruct",
-    quantization_config=None,
-    device_map=None,
-    dtype=torch.float32,
-    low_cpu_mem_usage=True,
+        "meta-llama/Llama-3.2-3B-Instruct",
+        device_map={"": "cpu"},      # force everything to CPU
+        torch_dtype=torch.float32,
+        low_cpu_mem_usage=True,
     )
 
-    llama = PeftModel.from_pretrained(llama_base, "lora_weights")
-    llama = llama.to("cpu")
+    llama = PeftModel.from_pretrained(
+        llama_base,
+        "lora_weights(curr)",
+        device_map={"": "cpu"},      # keep LoRA on CPU too
+    )
     llama.eval()
-        
+
     return classifier, llama, tokenizer

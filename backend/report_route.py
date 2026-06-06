@@ -10,7 +10,6 @@ from dependencies import models
 
 router = APIRouter()
 
-# Keep only the configuration constants
 IMAGE_SIZE = 518
 preprocess = transforms.Compose([
     transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
@@ -19,11 +18,25 @@ preprocess = transforms.Compose([
 ])
 
 
+def build_overlay(image: Image.Image, cam_norm: np.ndarray) -> str:
+    orig_w, orig_h = image.size
+    cam_uint8   = (cam_norm * 255).astype(np.uint8)
+    cam_resized = cv2.resize(cam_uint8, (orig_w, orig_h), interpolation=cv2.INTER_CUBIC)
+    colored     = cv2.applyColorMap(cam_resized, cv2.COLORMAP_TURBO)
+    colored_rgb = cv2.cvtColor(colored, cv2.COLOR_BGR2RGB)
+    orig_np     = np.array(image.convert("RGB"), dtype=np.float32)
+    blended     = (0.35 * orig_np + 0.65 * colored_rgb.astype(np.float32)).clip(0, 255).astype(np.uint8)
+    buf = io.BytesIO()
+    Image.fromarray(blended).save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode()
+
+
 def generate_report(visual_tokens: torch.Tensor) -> str:
-    # Pull tokenizer and llama from the central 'models' container
     tokenizer = models.tokenizer
-    llama = models.llama
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    llama     = models.llama
+
+    # LLaMA is on CPU — keep everything on CPU
+    llama_device = next(llama.parameters()).device
 
     instruction = (
         "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n"
@@ -33,13 +46,15 @@ def generate_report(visual_tokens: torch.Tensor) -> str:
         "Describe the findings and impression for this chest X-ray.<|eot_id|>"
         "<|start_header_id|>assistant<|end_header_id|>\n"
     )
-    
-    inst_ids = tokenizer(instruction, return_tensors="pt").input_ids.to(device)
-    text_embeds = llama.get_input_embeddings()(inst_ids).to(torch.bfloat16)
-    
-    visual_tokens = visual_tokens.to(torch.bfloat16)
-    combined = torch.cat([visual_tokens, text_embeds], dim=1)
-    attention_mask = torch.ones(combined.shape[:2], dtype=torch.long, device=device)
+
+    inst_ids    = tokenizer(instruction, return_tensors="pt").input_ids.to(llama_device)
+    text_embeds = llama.get_input_embeddings()(inst_ids).to(torch.float32)
+
+    # Move visual tokens to wherever LLaMA lives (CPU)
+    visual_tokens = visual_tokens.to(llama_device).to(torch.float32)
+
+    combined      = torch.cat([visual_tokens, text_embeds], dim=1)
+    attention_mask = torch.ones(combined.shape[:2], dtype=torch.long, device=llama_device)
 
     with torch.no_grad():
         output_ids = llama.generate(
@@ -50,33 +65,40 @@ def generate_report(visual_tokens: torch.Tensor) -> str:
             do_sample=True,
             temperature=0.4,
             top_p=0.9,
-            repetition_penalty=1.2
+            repetition_penalty=1.2,
         )
-        
-    return tokenizer.decode(output_ids[0], skip_special_tokens=True)
+
+    report = tokenizer.decode(output_ids[0], skip_special_tokens=True)
+
+    # Strip instruction echo if model repeats it
+    if "assistant" in report.lower():
+        report = report.split("assistant")[-1].strip("\n |>")
+
+    return report.strip()
+
 
 @router.post("/report")
 async def report(file: UploadFile = File(...)):
-    # Pull classifier from the container
     classifier = models.classifier
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    
-    content = await file.read()
-    image = Image.open(io.BytesIO(content)).convert("RGB")
-    tensor = preprocess(image).unsqueeze(0).to(device)
+    device     = "cuda" if torch.cuda.is_available() else "cpu"
 
-    results = classifier.run_pipeline(tensor)
-    probs = results["probs"]
-    cam_norm = results["cam_norm"]
-    visual_tokens = results["visual_tokens"]
+    content = await file.read()
+    image   = Image.open(io.BytesIO(content)).convert("RGB")
+    tensor  = preprocess(image).unsqueeze(0).to(device)
+
+    results       = classifier.run_pipeline(tensor)
+    probs         = results["probs"]
+    cam_norm      = results["cam_norm"]
+    visual_tokens = results["visual_tokens"]  # [1, 64, 3072] on GPU
 
     report_text = generate_report(visual_tokens)
+
     torch.cuda.empty_cache()
 
     return {
-        "prediction": "TB" if int(probs.argmax()) == 1 else "Normal",
-        "tb_probability": round(float(probs[1]) * 100, 2),
+        "prediction":         "TB" if int(probs.argmax()) == 1 else "Normal",
+        "tb_probability":     round(float(probs[1]) * 100, 2),
         "normal_probability": round(float(probs[0]) * 100, 2),
-        "overlay_image": build_overlay(image, cam_norm),
-        "report": report_text,
+        "overlay_image":      build_overlay(image, cam_norm),
+        "report":             report_text,
     }

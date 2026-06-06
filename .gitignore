@@ -2,6 +2,7 @@
 *.pt
 lora_weights/
 lora_weights(2)/
+lora_weights(3)/
 lora_weights(curr)/
 *.dat
 
