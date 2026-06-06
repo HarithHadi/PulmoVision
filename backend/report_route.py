@@ -51,7 +51,12 @@ def generate_report(visual_tokens: torch.Tensor, prediction: str, confidence: fl
 
     inst_ids    = tokenizer(instruction, return_tensors="pt",
                             add_special_tokens=False).input_ids.to(llama_device)
-    text_embeds = llama.get_input_embeddings()(inst_ids).to(COMPUTE_DTYPE)
+    # ✅ more robust for PEFT-wrapped models
+    try:
+        embed_fn = llama.get_input_embeddings()
+    except AttributeError:
+        embed_fn = llama.base_model.model.model.embed_tokens
+    text_embeds = embed_fn(inst_ids).to(COMPUTE_DTYPE)
     visual_tokens = visual_tokens.to(llama_device).to(COMPUTE_DTYPE)
 
     combined       = torch.cat([visual_tokens, text_embeds], dim=1)
@@ -93,13 +98,15 @@ async def report(file: UploadFile = File(...)):
     results       = classifier.run_pipeline(tensor)
     probs         = results["probs"]
     cam_norm      = results["cam_norm"]
-    visual_tokens = results["visual_tokens"]   # [1, 64, 3072] on GPU
+    visual_tokens = results["visual_tokens"]
 
-    report_text = generate_report(visual_tokens)
+    # ✅ compute these before passing to generate_report
+    prediction = "TB Positive" if int(probs.argmax()) == 1 else "Normal"
+    confidence = float(probs[1]) * 100
+
+    report_text = generate_report(visual_tokens, prediction, confidence)  # ✅ 3 args
 
     torch.cuda.empty_cache()
-
-    print(f"Raw decoded output: {repr(tokenizer.decode(output_ids[0], skip_special_tokens=False)[:500])}")
 
     return {
         "prediction":         "TB" if int(probs.argmax()) == 1 else "Normal",
