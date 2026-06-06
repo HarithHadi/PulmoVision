@@ -37,7 +37,11 @@ def clean_report(text: str) -> str:
     bad_phrases = [
         "prior", "previous", "interval", "since", "admission",
         "week earlier", "days ago", "CT scan", "compared to",
-        "has been", "there has", "improvement since", "when there was"
+        "has been", "there has", "improvement since", "when there was",
+        "was transferred", "transferred to", "ICU", "cardiology",
+        "catheterization", "respiratory distress", "following cardiac",
+        "he had", "she had", "patient was", "developed",
+        "history of", "known case", "presenting with",
     ]
     sentences = re.split(r'(?<=[.!?])\s+', text)
     clean = [s for s in sentences if not any(p.lower() in s.lower() for p in bad_phrases)]
@@ -81,11 +85,11 @@ def generate_report(visual_tokens: torch.Tensor, prediction: str, confidence: fl
                 attention_mask=attention_mask,
                 pad_token_id=tokenizer.eos_token_id,
                 eos_token_id=tokenizer.encode("<|eot_id|>")[0],
-                max_new_tokens=120,          # ← was 200, shorter = less hallucination
+                max_new_tokens=180,          # ← increase from 120
                 do_sample=False,
-                repetition_penalty=1.4,      # ← slightly higher
+                repetition_penalty=1.4,
                 no_repeat_ngram_size=4,
-        )
+            )
 
     # output_ids only contains NEW tokens (not the prompt)
     report = tokenizer.decode(output_ids[0], skip_special_tokens=True).strip()
