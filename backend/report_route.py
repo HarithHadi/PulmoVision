@@ -33,48 +33,52 @@ def build_overlay(image: Image.Image, cam_norm: np.ndarray) -> str:
     return base64.b64encode(buf.getvalue()).decode()
 
 
-def generate_report(visual_tokens: torch.Tensor) -> str:
+def generate_report(visual_tokens: torch.Tensor, prediction: str, confidence: float) -> str:
     tokenizer    = models.tokenizer
     llama        = models.llama
-    llama_device = next(llama.parameters()).device   # cuda on Colab
+    llama_device = next(llama.parameters()).device
 
     instruction = (
         "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n"
-        "You are an expert radiologist. Analyze the chest X-ray and "
-        "generate a structured radiology report.<|eot_id|>"
+        "You are an expert radiologist specializing in tuberculosis detection. "
+        "Write only the radiology report. Do not repeat these instructions.<|eot_id|>"
         "<|start_header_id|>user<|end_header_id|>\n"
-        "Describe the findings and impression for this chest X-ray.<|eot_id|>"
+        f"TB classifier result: {prediction} ({confidence:.1f}% confidence). "
+        "Describe the chest X-ray findings and provide an impression.<|eot_id|>"
         "<|start_header_id|>assistant<|end_header_id|>\n"
+        "FINDINGS: "   # ← prime the output format
     )
 
-    inst_ids    = tokenizer(instruction, return_tensors="pt").input_ids.to(llama_device)
+    inst_ids    = tokenizer(instruction, return_tensors="pt",
+                            add_special_tokens=False).input_ids.to(llama_device)
     text_embeds = llama.get_input_embeddings()(inst_ids).to(COMPUTE_DTYPE)
-
-    # Visual tokens: GPU + float16
     visual_tokens = visual_tokens.to(llama_device).to(COMPUTE_DTYPE)
 
     combined       = torch.cat([visual_tokens, text_embeds], dim=1)
     attention_mask = torch.ones(combined.shape[:2], dtype=torch.long, device=llama_device)
 
     with torch.no_grad():
-        with torch.cuda.amp.autocast(dtype=COMPUTE_DTYPE):
+        with torch.amp.autocast('cuda', dtype=COMPUTE_DTYPE):
             output_ids = llama.generate(
                 inputs_embeds=combined,
                 attention_mask=attention_mask,
                 pad_token_id=tokenizer.eos_token_id,
-                max_new_tokens=300,
-                do_sample=True,
-                temperature=0.4,
-                top_p=0.9,
-                repetition_penalty=1.2,
+                eos_token_id=tokenizer.encode("<|eot_id|>")[0],
+                max_new_tokens=200,
+                do_sample=False,        # ← greedy for more consistent output
+                repetition_penalty=1.3,
+                no_repeat_ngram_size=4,
             )
 
-    report = tokenizer.decode(output_ids[0], skip_special_tokens=True)
+    # output_ids only contains NEW tokens (not the prompt)
+    report = tokenizer.decode(output_ids[0], skip_special_tokens=True).strip()
 
-    if "assistant" in report.lower():
-        report = report.split("assistant")[-1].strip("\n |>")
+    # Clean any remaining header artifacts
+    for marker in ["assistant", "ASSISTANT", "<|", "system", "user"]:
+        if marker in report:
+            report = report.split(marker)[-1].strip(" \n|>:")
 
-    return report.strip()
+    return "FINDINGS: " + report if not report.startswith("FINDINGS") else report
 
 
 @router.post("/report")
@@ -94,6 +98,8 @@ async def report(file: UploadFile = File(...)):
     report_text = generate_report(visual_tokens)
 
     torch.cuda.empty_cache()
+
+    print(f"Raw decoded output: {repr(tokenizer.decode(output_ids[0], skip_special_tokens=False)[:500])}")
 
     return {
         "prediction":         "TB" if int(probs.argmax()) == 1 else "Normal",
