@@ -134,10 +134,10 @@ class RADDINOClassifier(nn.Module):
         weighted     = (patch_acts.detach() * cam_weights)
         weighted     = weighted.unsqueeze(0)
 
-        clip_patches = self.align_proj(weighted)             # [1, N_patches, 512]
+        clip_patches_report = self.align_proj(patch_acts.detach().unsqueeze(0))
 
         with torch.no_grad():
-            visual_tokens = self.c_abstractor(clip_patches)  # [1, 64, 3072] ✅
+            visual_tokens = self.c_abstractor(clip_patches_report)  # [1, 64, 3072] ✅
 
         for param in self.backbone.parameters():
             param.requires_grad = False
