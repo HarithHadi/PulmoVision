@@ -11,6 +11,8 @@ from dependencies import models
 router = APIRouter()
 
 IMAGE_SIZE = 518
+COMPUTE_DTYPE = torch.float16   # T4: float16 only, no bfloat16
+
 preprocess = transforms.Compose([
     transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
     transforms.ToTensor(),
@@ -32,11 +34,9 @@ def build_overlay(image: Image.Image, cam_norm: np.ndarray) -> str:
 
 
 def generate_report(visual_tokens: torch.Tensor) -> str:
-    tokenizer = models.tokenizer
-    llama     = models.llama
-
-    # LLaMA is on CPU — keep everything on CPU
-    llama_device = next(llama.parameters()).device
+    tokenizer    = models.tokenizer
+    llama        = models.llama
+    llama_device = next(llama.parameters()).device   # cuda on Colab
 
     instruction = (
         "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n"
@@ -48,29 +48,29 @@ def generate_report(visual_tokens: torch.Tensor) -> str:
     )
 
     inst_ids    = tokenizer(instruction, return_tensors="pt").input_ids.to(llama_device)
-    text_embeds = llama.get_input_embeddings()(inst_ids).to(torch.float32)
+    text_embeds = llama.get_input_embeddings()(inst_ids).to(COMPUTE_DTYPE)
 
-    # Move visual tokens to wherever LLaMA lives (CPU)
-    visual_tokens = visual_tokens.to(llama_device).to(torch.float32)
+    # Visual tokens: GPU + float16
+    visual_tokens = visual_tokens.to(llama_device).to(COMPUTE_DTYPE)
 
-    combined      = torch.cat([visual_tokens, text_embeds], dim=1)
+    combined       = torch.cat([visual_tokens, text_embeds], dim=1)
     attention_mask = torch.ones(combined.shape[:2], dtype=torch.long, device=llama_device)
 
     with torch.no_grad():
-        output_ids = llama.generate(
-            inputs_embeds=combined,
-            attention_mask=attention_mask,
-            pad_token_id=tokenizer.eos_token_id,
-            max_new_tokens=300,
-            do_sample=True,
-            temperature=0.4,
-            top_p=0.9,
-            repetition_penalty=1.2,
-        )
+        with torch.cuda.amp.autocast(dtype=COMPUTE_DTYPE):
+            output_ids = llama.generate(
+                inputs_embeds=combined,
+                attention_mask=attention_mask,
+                pad_token_id=tokenizer.eos_token_id,
+                max_new_tokens=300,
+                do_sample=True,
+                temperature=0.4,
+                top_p=0.9,
+                repetition_penalty=1.2,
+            )
 
     report = tokenizer.decode(output_ids[0], skip_special_tokens=True)
 
-    # Strip instruction echo if model repeats it
     if "assistant" in report.lower():
         report = report.split("assistant")[-1].strip("\n |>")
 
@@ -89,7 +89,7 @@ async def report(file: UploadFile = File(...)):
     results       = classifier.run_pipeline(tensor)
     probs         = results["probs"]
     cam_norm      = results["cam_norm"]
-    visual_tokens = results["visual_tokens"]  # [1, 64, 3072] on GPU
+    visual_tokens = results["visual_tokens"]   # [1, 64, 3072] on GPU
 
     report_text = generate_report(visual_tokens)
 

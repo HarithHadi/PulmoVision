@@ -177,19 +177,22 @@ def load_all_models(device):
     tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.2-3B-Instruct")
     tokenizer.pad_token = tokenizer.eos_token
 
-    # Load entirely on CPU — 4GB GPU is fully used by the classifier
+    # 4-bit quant — fits 3B + classifier comfortably in 16GB T4
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.float16,   # float16 for T4
+        bnb_4bit_use_double_quant=True,
+    )
+
     llama_base = AutoModelForCausalLM.from_pretrained(
         "meta-llama/Llama-3.2-3B-Instruct",
-        device_map={"": "cpu"},      # force everything to CPU
-        torch_dtype=torch.float32,
+        quantization_config=bnb_config,
+        device_map="auto",           # T4 has room — let accelerate place it
         low_cpu_mem_usage=True,
     )
 
-    llama = PeftModel.from_pretrained(
-        llama_base,
-        "lora_weights(curr)",
-        device_map={"": "cpu"},      # keep LoRA on CPU too
-    )
+    llama = PeftModel.from_pretrained(llama_base, "lora_weights(curr)")
     llama.eval()
 
     return classifier, llama, tokenizer
