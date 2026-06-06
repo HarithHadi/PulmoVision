@@ -7,6 +7,7 @@ from PIL import Image
 from fastapi import UploadFile, File, APIRouter
 from torchvision import transforms
 from dependencies import models
+import re
 
 router = APIRouter()
 
@@ -32,6 +33,16 @@ def build_overlay(image: Image.Image, cam_norm: np.ndarray) -> str:
     Image.fromarray(blended).save(buf, format="PNG")
     return base64.b64encode(buf.getvalue()).decode()
 
+def clean_report(text: str) -> str:
+    bad_phrases = [
+        "prior", "previous", "interval", "since", "admission",
+        "week earlier", "days ago", "CT scan", "compared to",
+        "has been", "there has", "improvement since", "when there was"
+    ]
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+    clean = [s for s in sentences if not any(p.lower() in s.lower() for p in bad_phrases)]
+    return ' '.join(clean).strip()
+
 
 def generate_report(visual_tokens: torch.Tensor, prediction: str, confidence: float) -> str:
     tokenizer    = models.tokenizer
@@ -39,15 +50,16 @@ def generate_report(visual_tokens: torch.Tensor, prediction: str, confidence: fl
     llama_device = next(llama.parameters()).device
 
     instruction = (
-        "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n"
-        "You are an expert radiologist specializing in tuberculosis detection. "
-        "Write only the radiology report. Do not repeat these instructions.<|eot_id|>"
-        "<|start_header_id|>user<|end_header_id|>\n"
-        f"TB classifier result: {prediction} ({confidence:.1f}% confidence). "
-        "Describe the chest X-ray findings and provide an impression.<|eot_id|>"
-        "<|start_header_id|>assistant<|end_header_id|>\n"
-        "FINDINGS: "   # ← prime the output format
-    )
+    "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n"
+    "You are an expert radiologist. Write a radiology report based ONLY on what is "
+    "visible in this single chest X-ray. Do NOT reference prior scans, previous admissions, "
+    "interval changes, history, or any information not visible in this image.<|eot_id|>"
+    "<|start_header_id|>user<|end_header_id|>\n"
+    f"TB classifier result: {prediction} ({confidence:.1f}% confidence). "
+    "Describe only the visible findings in this chest X-ray and give a brief impression.<|eot_id|>"
+    "<|start_header_id|>assistant<|end_header_id|>\n"
+    "FINDINGS: The chest X-ray demonstrates"  # ← stronger primer
+)
 
     inst_ids    = tokenizer(instruction, return_tensors="pt",
                             add_special_tokens=False).input_ids.to(llama_device)
@@ -69,11 +81,11 @@ def generate_report(visual_tokens: torch.Tensor, prediction: str, confidence: fl
                 attention_mask=attention_mask,
                 pad_token_id=tokenizer.eos_token_id,
                 eos_token_id=tokenizer.encode("<|eot_id|>")[0],
-                max_new_tokens=200,
-                do_sample=False,        # ← greedy for more consistent output
-                repetition_penalty=1.3,
+                max_new_tokens=120,          # ← was 200, shorter = less hallucination
+                do_sample=False,
+                repetition_penalty=1.4,      # ← slightly higher
                 no_repeat_ngram_size=4,
-            )
+        )
 
     # output_ids only contains NEW tokens (not the prompt)
     report = tokenizer.decode(output_ids[0], skip_special_tokens=True).strip()
@@ -83,6 +95,7 @@ def generate_report(visual_tokens: torch.Tensor, prediction: str, confidence: fl
         if marker in report:
             report = report.split(marker)[-1].strip(" \n|>:")
 
+    report = clean_report(report)
     return "FINDINGS: " + report if not report.startswith("FINDINGS") else report
 
 
