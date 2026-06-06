@@ -157,11 +157,18 @@ def load_all_models(device):
         strict=False
     )
 
-    # ── Stage 1 weights ───────────────────────────────────────────────────────
+    # ── Stage 1 weights ───────────────────────────────────────────────────────────
     stage1_path = Path("stage1_checkpoint.pt")
     if stage1_path.exists():
         stage1 = torch.load(stage1_path, map_location=device, weights_only=False)
-        classifier.align_proj.load_state_dict(stage1["align_proj"])
+
+        # Remap "proj.weight" → "weight" for align_proj
+        align_state = {}
+        for k, v in stage1["align_proj"].items():
+            new_key = k.replace("proj.", "", 1)   # "proj.weight" → "weight"
+            align_state[new_key] = v
+
+        classifier.align_proj.load_state_dict(align_state)
         classifier.c_abstractor.load_state_dict(stage1["c_abstractor"])
         print(f"✓ Stage 1 weights loaded (val_loss={stage1['val_loss']:.4f})")
     else:
