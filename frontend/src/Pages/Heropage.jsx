@@ -19,7 +19,7 @@ const features = [
     ),
     title: "Reasoning Engine",
     desc: "LLaMA-3-8B language model generates structured clinical reports from visual embeddings.",
-    tag: "meta-llama/llama-3-8b",
+    tag: "meta-llama/Llama-3.2-3B-Instruct",
   },
   {
     icon: (
@@ -45,9 +45,9 @@ const features = [
 
 const stats = [
   { value: "900K+", label: "X-rays trained on" },
-  { value: "8B", label: "LLM parameters" },
+  { value: "3B", label: "LLM parameters" },
   { value: "97%+", label: "TB detection accuracy" },
-  { value: "<3s", label: "Inference time" },
+  { value: "<10s", label: "Inference time" },
 ];
 
 const pipeline = [

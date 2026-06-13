@@ -6,8 +6,17 @@ from diagnose_route import router as diagnose_router
 from report_route import router as report_router
 from models_def import load_all_models
 import torch
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],      # or your specific frontend URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.on_event("startup")
 async def startup_event():

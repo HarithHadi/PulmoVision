@@ -1,21 +1,60 @@
 import { useState, useRef, useCallback } from "react";
 
-const API_URL = "http://localhost:8000/diagnose";
+const MOCK = false;
+
+const MOCK_RESULT = {
+  prediction: "TB",
+  tb_probability: 83.2,
+  normal_probability: 16.8,
+  overlay_image: "",
+  report: `FINDINGS: The chest X-ray demonstrates increased opacity in the right upper lobe with poorly defined margins. There is evidence of consolidation with possible cavitation. The left lung appears clear. No pleural effusion identified. Cardiac silhouette is within normal limits.
+
+IMPRESSION: Findings are consistent with active pulmonary tuberculosis involving the right upper lobe. Clinical correlation and sputum AFB culture are recommended.`,
+};
+
+const API_URL = "https://humorous-headache-reenter.ngrok-free.dev/report";
 
 export default function TBDiagnosis() {
-  const [file, setFile]         = useState(null);
-  const [preview, setPreview]   = useState(null);
-  const [result, setResult]     = useState(null);
-  const [loading, setLoading]   = useState(false);
-  const [error, setError]       = useState(null);
-  const [dragging, setDragging] = useState(false);
-  const fileInputRef            = useRef(null);
+  const [file, setFile]             = useState(null);
+  const [preview, setPreview]       = useState(null);
+  const [result, setResult]         = useState(null);
+  const [loading, setLoading]       = useState(false);
+  const [loadingStep, setLoadingStep] = useState("");
+  const [error, setError]           = useState(null);
+  const [dragging, setDragging]     = useState(false);
+  const [reportOpen, setReportOpen] = useState(true);  // ← new
+  const fileInputRef                = useRef(null);
+  const stepTimerRef                = useRef(null);
+
+  const steps = [
+    "Initializing RAD-DINO...",
+    "Extracting patch tokens...",
+    "Computing GradCAM heatmap...",
+    "Generating visual tokens...",
+    "LLaMA-3 generating report...",
+    "Almost done...",
+  ];
+
+  const startSteps = () => {
+    let i = 0;
+    setLoadingStep(steps[0]);
+    stepTimerRef.current = setInterval(() => {
+      i = Math.min(i + 1, steps.length - 1);
+      setLoadingStep(steps[i]);
+    }, 4000);
+  };
+
+  const stopSteps = () => {
+    clearInterval(stepTimerRef.current);
+    setLoadingStep("");
+  };
 
   const loadFile = (f) => {
     if (!f || !f.type.startsWith("image/")) return;
     setFile(f);
     setResult(null);
     setError(null);
+    setReportOpen(true);  // reset on new file
     const reader = new FileReader();
     reader.onload = (e) => setPreview(e.target.result);
     reader.readAsDataURL(f);
@@ -32,16 +71,31 @@ export default function TBDiagnosis() {
     setLoading(true);
     setError(null);
     setResult(null);
+    startSteps();
+
+    if (MOCK) {
+      await new Promise(r => setTimeout(r, 6000));
+      stopSteps();
+      setResult(MOCK_RESULT);
+      setLoading(false);
+      return;
+    }
+
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch(API_URL, { method: "POST", body: form });
+      const res = await fetch(API_URL, {
+        method: "POST",
+        headers: { "ngrok-skip-browser-warning": "true" },
+        body: form,
+      });
       if (!res.ok) throw new Error(`Server error ${res.status}`);
       const data = await res.json();
       setResult(data);
     } catch (err) {
       setError(err.message);
     } finally {
+      stopSteps();
       setLoading(false);
     }
   };
@@ -52,31 +106,27 @@ export default function TBDiagnosis() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-
-      {/* Page */}
       <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-20 pb-8 sm:pt-24 sm:pb-12">
 
         {/* Hero */}
         <div className="mb-10 sm:mb-12">
-          <span className="inline-block text-xs font-semibold tracking-widest text-prmiary bg-background border border-border/60 px-3 py-1 rounded-full mb-4">
-            RAD-DINO + GradCAM
+          <span className="inline-block text-xs font-semibold tracking-widest text-primary bg-background border border-border/60 px-3 py-1 rounded-full mb-4">
+            RAD-DINO · GradCAM · LLaMA-3
           </span>
           <h1 className="text-2xl sm:text-4xl font-bold text-primary leading-tight mb-3">
             Tuberculosis Detection
           </h1>
           <p className="text-sm sm:text-base text-card max-w-lg">
-            Upload a chest X-ray to detect TB and visualize the regions the model focuses on using gradient-weighted class activation mapping.
+            Upload a chest X-ray to detect TB, visualize suspicious regions, and generate an AI radiology report.
           </p>
         </div>
 
-        {/* Two column layout on large screens */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-10 items-start">
 
-          {/* Left — Upload + Controls */}
+          {/* Left */}
           <div className="space-y-4">
             <h2 className="text-xs font-semibold text-card uppercase tracking-widest">Input</h2>
 
-            {/* Drop Zone */}
             <div
               onClick={() => fileInputRef.current?.click()}
               onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
@@ -118,39 +168,33 @@ export default function TBDiagnosis() {
               )}
             </div>
 
-            {/* Preview thumbnail */}
             {preview && !result && (
-              <div className="rounded-xl overflow-hidden border border-border bg-card/100 aspect-video">
+              <div className="rounded-xl overflow-hidden border border-border bg-card aspect-video">
                 <img src={preview} alt="preview" className="w-full h-full object-contain" />
               </div>
             )}
 
-            {/* Analyze Button */}
             <button
               onClick={analyze}
               disabled={!file || loading}
               className="w-full py-3.5 rounded-xl font-semibold text-sm bg-green-400 hover:bg-green-300 active:bg-green-500 text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-              {loading && (
-                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              )}
+              {loading && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
               {loading ? "Analyzing..." : "Run Analysis"}
             </button>
 
-            {/* Error */}
             {error && (
               <div className="bg-danger border border-danger-800 text-red-100 text-sm px-4 py-3 rounded-xl">
                 ⚠ {error} — is the backend running?
               </div>
             )}
 
-            {/* Info cards */}
             <div className="grid grid-cols-2 gap-3 pt-2">
               {[
-                { label: "Model",    value: "RAD-DINO" },
-                { label: "Method",   value: "GradCAM" },
-                { label: "Dataset",  value: "Montgomery + Shenzhen" },
-                { label: "Classes",  value: "TB / Normal" },
+                { label: "Visual Encoder", value: "RAD-DINO" },
+                { label: "Localization",   value: "GradCAM" },
+                { label: "Report Model",   value: "LLaMA-3.2-3B" },
+                { label: "Dataset",        value: "Montgomery + Shenzhen" },
               ].map(({ label, value }) => (
                 <div key={label} className="bg-card border border-border rounded-xl px-3 py-2.5">
                   <p className="text-xs text-foreground mb-0.5">{label}</p>
@@ -160,7 +204,7 @@ export default function TBDiagnosis() {
             </div>
           </div>
 
-          {/* Right — Results */}
+          {/* Right */}
           <div className="space-y-4">
             <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Results</h2>
 
@@ -173,7 +217,8 @@ export default function TBDiagnosis() {
             {loading && (
               <div className="border border-border bg-card rounded-2xl p-12 text-center space-y-3">
                 <span className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin inline-block" />
-                <p className="text-sm text-slate-400">Running RAD-DINO inference...</p>
+                <p className="text-sm text-slate-400">Running analysis...</p>
+                {loadingStep && <p className="text-xs text-slate-600">{loadingStep}</p>}
               </div>
             )}
 
@@ -182,9 +227,7 @@ export default function TBDiagnosis() {
 
                 {/* Prediction Banner */}
                 <div className={`rounded-2xl px-5 py-4 border-2 border-dashed ${
-                  isTB
-                    ? "bg-danger/50 border-danger"
-                    : "bg-success/50 border-success"
+                  isTB ? "bg-danger/50 border-danger" : "bg-success/50 border-success"
                 }`}>
                   <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
                     <div>
@@ -193,13 +236,11 @@ export default function TBDiagnosis() {
                         {result.prediction}
                       </p>
                     </div>
-                    <div className={`text-right text-xs ${isTB ? "text-red-900" : "text-green-900"}`}>
+                    <div className={`text-right ${isTB ? "text-red-900" : "text-green-900"}`}>
                       <p className="text-3xl font-bold">{isTB ? tbProb : nrProb}%</p>
-                      <p className="text-background">confidence</p>
+                      <p className="text-xs text-background">confidence</p>
                     </div>
                   </div>
-
-                  {/* Bars */}
                   <div className="space-y-2 font-bold">
                     {[
                       { label: "TB",     value: tbProb, color: "from-red-700 to-red-500" },
@@ -245,10 +286,61 @@ export default function TBDiagnosis() {
                   <span className="text-xs text-card shrink-0">High</span>
                 </div>
 
-                {/* Disclaimer */}
-                <p className="text-center text-xs text-slate-600 pb-2">
+                {/* ── Collapsible Report ───────────────────────────────── */}
+                {result.report && (
+                  <div className="bg-card border border-border rounded-2xl overflow-hidden">
+                    
+                    {/* Header — clickable toggle */}
+                    <button
+                      onClick={() => setReportOpen(o => !o)}
+                      className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-card-hover transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-widest">
+                          AI Radiology Report
+                        </span>
+                        <span className="text-xs text-primary bg-card border border-border rounded px-2 py-0.5">
+                          LLaMA-3 · LoRA
+                        </span>
+                      </div>
+
+                      {/* Chevron icon — rotates when open */}
+                      <svg
+                        className={`w-4 h-4 text-foreground transition-transform duration-300 ${
+                          reportOpen ? "rotate-180" : ""
+                        }`}
+                        fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"
+                      >
+                        <path d="M6 9l6 6 6-6"/>
+                      </svg>
+                    </button>
+
+                    {/* Collapsible body with Smooth Animation */}
+                    <div
+                      className={`grid transition-all duration-300 ease-in-out ${
+                        reportOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+                      }`}
+                    >
+                      {/* 
+                        This inner div requires overflow-hidden so the text 
+                        doesn't spill out while the grid row collapses to 0fr 
+                      */}
+                      <div className="overflow-hidden">
+                        <div className="px-5 pb-5 pt-1 border-t border-border">
+                          <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+                            {result.report}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+                )}
+
+                <p className="text-center text-xs text-slate-600 pb-2 mt-4">
                   ⚕ For research purposes only. Not a substitute for clinical diagnosis.
                 </p>
+
               </div>
             )}
           </div>
