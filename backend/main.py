@@ -1,14 +1,14 @@
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from dependencies import models
-from backend.routes.tb_route import router as tb_router
-from backend.routes.diagnose_route import router as diagnose_router
-from backend.routes.report_route import router as report_router
+from routes.tb_route import router as tb_router
+from routes.diagnose_route import router as diagnose_router
+from routes.report_route import router as report_router
+from routes.auth_route import router as auth_router
 from models_def import load_all_models
 import torch
 from fastapi.middleware.cors import CORSMiddleware
 from db import supabase
-from routes.auth_route import router as auth_router
 from routes.patient_route import router as patient_router
 from routes.diagnosis_route import router as diagnosis_save_router
 
