@@ -11,3 +11,6 @@ checkpoint-*/
 results/
 models/
 offload_cache/
+
+
+.env

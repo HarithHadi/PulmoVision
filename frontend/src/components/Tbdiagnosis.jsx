@@ -22,7 +22,7 @@ export default function TBDiagnosis() {
   const [loadingStep, setLoadingStep] = useState("");
   const [error, setError]           = useState(null);
   const [dragging, setDragging]     = useState(false);
-  const [reportOpen, setReportOpen] = useState(true);  // ← new
+  const [reportOpen, setReportOpen] = useState(true);  
   const fileInputRef                = useRef(null);
   const stepTimerRef                = useRef(null);
 

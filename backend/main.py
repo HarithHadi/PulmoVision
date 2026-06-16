@@ -1,12 +1,16 @@
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from dependencies import models
-from tb_route import router as tb_router
-from diagnose_route import router as diagnose_router
-from report_route import router as report_router
+from backend.routes.tb_route import router as tb_router
+from backend.routes.diagnose_route import router as diagnose_router
+from backend.routes.report_route import router as report_router
 from models_def import load_all_models
 import torch
 from fastapi.middleware.cors import CORSMiddleware
+from db import supabase
+from routes.auth_route import router as auth_router
+from routes.patient_route import router as patient_router
+from routes.diagnosis_route import router as diagnosis_save_router
 
 app = FastAPI()
 
@@ -48,3 +52,8 @@ def read_item(item_id: int, q: str | None = None):
 @app.get("/pulmovision")
 def serve_pulmovision():
     return FileResponse("PulmoVision.html")
+
+
+app.include_router(auth_router, prefix="/auth", tags=["auth"])
+app.include_router(patient_router, prefix="/patients", tags=["patients"])
+app.include_router(diagnosis_save_router, prefix="/diagnoses", tags=["diagnoses"])
