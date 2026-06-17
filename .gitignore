@@ -14,3 +14,5 @@ offload_cache/
 
 
 .env
+*.pyc
+__pycache__/
