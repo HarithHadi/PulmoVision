@@ -14,9 +14,9 @@ export default function Navbar() {
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border/60 bg-card/80 backdrop-blur-md">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 grid grid-cols-3 items-center">
 
-        {/* Logo */}
+        {/* Left — Logo */}
         <Link to="/" className="flex items-center gap-2.5 shrink-0">
           <div className="w-7 h-7 rounded-lg bg-primary/90 flex items-center justify-center">
             <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -26,50 +26,46 @@ export default function Navbar() {
           <span className="font-semibold text-sm text-card tracking-tight">PulmoVision</span>
         </Link>
 
-        {/* Nav links */}
-        <div className="hidden md:flex items-center gap-6 text-sm text-card-400">
+        {/* Center — Nav links or page buttons */}
+        <div className="hidden md:flex items-center justify-center gap-3 text-sm">
           {isHome ? (
             navLinks.map(({ label, href }) => (
-              <a key={label} href={href} className="hover:text-white transition-colors">
+              <a key={label} href={href} className="text-slate-400 hover:text-primary transition-colors">
                 {label}
               </a>
             ))
           ) : (
-            <Link to="/" className="hover:text-primary transition-colors flex items-center gap-1.5">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"/>
-              </svg>
-              Back to Home
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link
+                to="/diagnose"
+                className={`text-sm font-medium px-4 py-1.5 rounded-lg transition-all border ${
+                  location.pathname === "/diagnose"
+                    ? "border-primary text-primary"
+                    : "border-border text-slate-400 hover:text-foreground hover:border-border-hover"
+                }`}
+              >
+                TB Detection
+              </Link>
+              {token && (
+                <Link
+                  to="/patients"
+                  className={`text-sm font-medium px-4 py-1.5 rounded-lg transition-all border ${
+                    location.pathname === "/patients"
+                      ? "border-primary text-primary"
+                      : "border-border text-slate-400 hover:text-foreground hover:border-border-hover"
+                  }`}
+                >
+                  Patient Records
+                </Link>
+              )}
+            </div>
           )}
         </div>
 
-        {/* Right side */}
-        <div className="flex items-center gap-3">
-          {!isHome && (
-            <span className="hidden sm:block text-xs text-slate-500 border border-border px-2.5 py-1 rounded-lg select-none font-bold">
-              {location.pathname === "/diagnose" ? "TB Detection" : 
-               location.pathname === "/patients" ? "Patient Records" : "PulmoVision"}
-            </span>
-          )}
-
-          {/* Patient Records link — only when logged in */}
-          {token && (
-            <Link
-              to="/patients"
-              className={`text-sm font-medium px-4 py-1.5 rounded-lg transition-all border ${
-                location.pathname === "/patients"
-                  ? "border-primary text-primary"
-                  : "border-border text-slate-400 hover:text-foreground hover:border-border-hover"
-              }`}
-            >
-              Patient Records
-            </Link>
-          )}
-
-          {/* Show radiologist name + logout when logged in, Launch App when not */}
+        {/* Right — Auth */}
+        <div className="flex items-center justify-end gap-3">
           {token ? (
-            <div className="flex items-center gap-3">
+            <>
               <span className="hidden sm:block text-xs text-slate-500">
                 {radiologistName}
               </span>
@@ -79,7 +75,7 @@ export default function Navbar() {
               >
                 Logout
               </button>
-            </div>
+            </>
           ) : (
             <Link
               to="/diagnose"
