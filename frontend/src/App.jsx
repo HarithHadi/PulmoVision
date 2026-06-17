@@ -5,8 +5,10 @@ import heroImg from './assets/hero.png'
 import './App.css'
 import { BrowserRouter, Routes, Route } from "react-router-dom"
 import HeroPage from "./pages/HeroPage"
-import TBDiagnosis from './components/Tbdiagnosis'
+import TBDiagnosis from './pages/Tbdiagnosis'
 import Navbar from './components/Navbar'
+import PatientRecords from './Pages/PatientRecords'
+
 
 export default function App() {
   return (
@@ -15,6 +17,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<HeroPage />} />
         <Route path="/diagnose" element={<TBDiagnosis />} />
+        <Route path="/patients" element={<PatientRecords />} />
       </Routes>
     </BrowserRouter>
   )

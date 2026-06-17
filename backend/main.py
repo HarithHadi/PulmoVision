@@ -9,17 +9,29 @@ import torch
 
 app = FastAPI()
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "https://humorous-headache-reenter.ngrok-free.dev",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 @app.on_event("startup")
 async def startup_event():
     print("Loading models into VRAM...")
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    # device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    clf, llama, tok = load_all_models(device)
+    # clf, llama, tok = load_all_models(device)
 
-    models.classifier = clf
-    models.llama = llama
-    models.tokenizer = tok
-    models.load_tb_model()
+    # models.classifier = clf
+    # models.llama = llama
+    # models.tokenizer = tok
+    # models.load_tb_model()
 
     print("All models are ready for iference")
 

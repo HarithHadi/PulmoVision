@@ -1,4 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
+import { useAuth } from "../AuthContext";
 
 const navLinks = [
   { label: "Features",    href: "/#features" },
@@ -9,6 +10,7 @@ const navLinks = [
 export default function Navbar() {
   const location = useLocation();
   const isHome = location.pathname === "/";
+  const { token, radiologistName, logout } = useAuth();
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border/60 bg-card/80 backdrop-blur-md">
@@ -24,7 +26,7 @@ export default function Navbar() {
           <span className="font-semibold text-sm text-card tracking-tight">PulmoVision</span>
         </Link>
 
-        {/* Nav links — only show on home, or as back link on other pages */}
+        {/* Nav links */}
         <div className="hidden md:flex items-center gap-6 text-sm text-card-400">
           {isHome ? (
             navLinks.map(({ label, href }) => (
@@ -33,7 +35,7 @@ export default function Navbar() {
               </a>
             ))
           ) : (
-            <Link to="/" className="hover:text-white transition-colors flex items-center gap-1.5">
+            <Link to="/" className="hover:text-primary transition-colors flex items-center gap-1.5">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"/>
               </svg>
@@ -44,18 +46,48 @@ export default function Navbar() {
 
         {/* Right side */}
         <div className="flex items-center gap-3">
-          {/* Current page indicator on non-home pages */}
           {!isHome && (
             <span className="hidden sm:block text-xs text-slate-500 border border-border px-2.5 py-1 rounded-lg select-none font-bold">
-              {location.pathname === "/diagnose" ? "TB Detection" : "PulmoVision"}
+              {location.pathname === "/diagnose" ? "TB Detection" : 
+               location.pathname === "/patients" ? "Patient Records" : "PulmoVision"}
             </span>
           )}
-          <Link
-            to="/diagnose"
-            className="text-sm font-medium bg-primary/90 hover:bg-primary-hover text-white px-4 py-1.5 rounded-lg transition-all"
-          >
-            Launch App
-          </Link>
+
+          {/* Patient Records link — only when logged in */}
+          {token && (
+            <Link
+              to="/patients"
+              className={`text-sm font-medium px-4 py-1.5 rounded-lg transition-all border ${
+                location.pathname === "/patients"
+                  ? "border-primary text-primary"
+                  : "border-border text-slate-400 hover:text-foreground hover:border-border-hover"
+              }`}
+            >
+              Patient Records
+            </Link>
+          )}
+
+          {/* Show radiologist name + logout when logged in, Launch App when not */}
+          {token ? (
+            <div className="flex items-center gap-3">
+              <span className="hidden sm:block text-xs text-slate-500">
+                {radiologistName}
+              </span>
+              <button
+                onClick={logout}
+                className="text-sm font-medium border border-border text-slate-400 hover:text-red-400 hover:border-red-400/40 px-4 py-1.5 rounded-lg transition-all"
+              >
+                Logout
+              </button>
+            </div>
+          ) : (
+            <Link
+              to="/diagnose"
+              className="text-sm font-medium bg-primary/90 hover:bg-primary-hover text-white px-4 py-1.5 rounded-lg transition-all"
+            >
+              Launch App
+            </Link>
+          )}
         </div>
 
       </div>
