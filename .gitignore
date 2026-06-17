@@ -12,7 +12,7 @@ results/
 models/
 offload_cache/
 
-
 .env
 *.pyc
 __pycache__/
+**/__pycache__/
