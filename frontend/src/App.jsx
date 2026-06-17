@@ -8,6 +8,7 @@ import HeroPage from "./pages/HeroPage"
 import TBDiagnosis from './pages/Tbdiagnosis'
 import Navbar from './components/Navbar'
 import PatientRecords from './Pages/PatientRecords'
+import DiagnosisDetail from "./Pages/DiagnosisDetail";
 
 
 export default function App() {
@@ -18,6 +19,7 @@ export default function App() {
         <Route path="/" element={<HeroPage />} />
         <Route path="/diagnose" element={<TBDiagnosis />} />
         <Route path="/patients" element={<PatientRecords />} />
+        <Route path="/diagnosis/:id" element={<DiagnosisDetail />} />
       </Routes>
     </BrowserRouter>
   )

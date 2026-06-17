@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../AuthContext";
 
-const BASE_URL = "http://localhost:8000";
+const BASE_URL = "https://humorous-headache-reenter.ngrok-free.dev";
 
 export default function PatientRecords() {
   const { token, radiologistName } = useAuth();
@@ -298,6 +298,13 @@ export default function PatientRecords() {
                 day: "numeric", month: "long", year: "numeric"
               })}
             </p>
+
+            <button
+              onClick={() => navigate(`/diagnosis/${selected.id}`, { state: selected })}
+              className="w-full py-2.5 rounded-xl text-sm bg-blue-600 hover:bg-blue-500 text-white font-semibold transition-all"
+            >
+              View Full Report
+            </button>
 
             <button
               onClick={() => setSelected(null)}
