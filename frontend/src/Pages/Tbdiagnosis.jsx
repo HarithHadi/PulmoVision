@@ -12,8 +12,8 @@ const MOCK_RESULT = {
 IMPRESSION: Findings are consistent with active pulmonary tuberculosis involving the right upper lobe. Clinical correlation and sputum AFB culture are recommended.`,
 };
 
-const API_URL = "https://humorous-headache-reenter.ngrok-free.dev/report";
-const BASE_URL = "https://humorous-headache-reenter.ngrok-free.dev"
+const API_URL = "http://localhost:8000/report";
+const BASE_URL = "http://localhost:8000";
 
 export default function TBDiagnosis() {
   const [file, setFile]               = useState(null);

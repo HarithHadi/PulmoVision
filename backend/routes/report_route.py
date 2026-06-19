@@ -7,18 +7,26 @@ from PIL import Image
 from fastapi import UploadFile, File, APIRouter
 from torchvision import transforms
 from dependencies import models
+from groq import Groq
+from dotenv import load_dotenv
 import re
+import os
+
+load_dotenv()
 
 router = APIRouter()
 
 IMAGE_SIZE = 518
-COMPUTE_DTYPE = torch.float16   # T4: float16 only, no bfloat16
+COMPUTE_DTYPE = torch.float16
 
 preprocess = transforms.Compose([
     transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
     transforms.ToTensor(),
     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
 ])
+
+# Groq client
+groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 
 def build_overlay(image: Image.Image, cam_norm: np.ndarray) -> str:
@@ -32,6 +40,7 @@ def build_overlay(image: Image.Image, cam_norm: np.ndarray) -> str:
     buf = io.BytesIO()
     Image.fromarray(blended).save(buf, format="PNG")
     return base64.b64encode(buf.getvalue()).decode()
+
 
 def clean_report(text: str) -> str:
     bad_phrases = [
@@ -49,63 +58,59 @@ def clean_report(text: str) -> str:
 
 
 def generate_report(visual_tokens: torch.Tensor, prediction: str, confidence: float) -> str:
-    tokenizer    = models.tokenizer
-    llama        = models.llama
-    llama_device = next(llama.parameters()).device
 
-    instruction = (
-    "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n"
-    "You are an expert radiologist. Write a radiology report based ONLY on what is "
-    "visible in this single chest X-ray. Do NOT reference prior scans, previous admissions, "
-    "interval changes, history, or any information not visible in this image.<|eot_id|>"
-    "<|start_header_id|>user<|end_header_id|>\n"
-    f"TB classifier result: {prediction} ({confidence:.1f}% confidence). "
-    "Describe only the visible findings in this chest X-ray and give a brief impression.<|eot_id|>"
-    "<|start_header_id|>assistant<|end_header_id|>\n"
-    "FINDINGS: The chest X-ray demonstrates"  # ← stronger primer
-)
+    prompt = (
+        f"TB classifier result: {prediction} ({confidence:.1f}% confidence).\n\n"
+        f"Write a chest X-ray radiology report with exactly two sections: FINDINGS and IMPRESSION. "
+        f"No headers, no bullet points, no patient information, no additional notes. "
+        f"Plain text only. Start directly with FINDINGS:"
+    )
 
-    inst_ids    = tokenizer(instruction, return_tensors="pt",
-                            add_special_tokens=False).input_ids.to(llama_device)
-    # ✅ more robust for PEFT-wrapped models
-    try:
-        embed_fn = llama.get_input_embeddings()
-    except AttributeError:
-        embed_fn = llama.base_model.model.model.embed_tokens
-    text_embeds = embed_fn(inst_ids).to(COMPUTE_DTYPE)
-    visual_tokens = visual_tokens.to(llama_device).to(COMPUTE_DTYPE)
+    response = groq_client.chat.completions.create(
+        model="llama-3.1-8b-instant",
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are a radiologist writing concise radiology reports. "
+                    "Output only FINDINGS and IMPRESSION sections in plain text. "
+                    "No markdown, no bullet points, no bold text, no headers, no extra sections. "
+                    "Never reference patient history, prior scans, or information not in this image."
+                )
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        max_tokens=250,
+        temperature=0.1,
+    )
 
-    combined       = torch.cat([visual_tokens, text_embeds], dim=1)
-    attention_mask = torch.ones(combined.shape[:2], dtype=torch.long, device=llama_device)
+    report = response.choices[0].message.content.strip()
 
-    with torch.no_grad():
-        with torch.amp.autocast('cuda', dtype=COMPUTE_DTYPE):
-            output_ids = llama.generate(
-                inputs_embeds=combined,
-                attention_mask=attention_mask,
-                pad_token_id=tokenizer.eos_token_id,
-                eos_token_id=tokenizer.encode("<|eot_id|>")[0],
-                max_new_tokens=180,          # ← increase from 120
-                do_sample=False,
-                repetition_penalty=1.4,
-                no_repeat_ngram_size=4,
-            )
+    # Strip markdown formatting
+    report = re.sub(r'\*\*.*?\*\*', '', report)  # remove **bold**
+    report = re.sub(r'\*.*?\*', '', report)        # remove *italic*
+    report = re.sub(r'^[-•]\s+', '', report, flags=re.MULTILINE)  # remove bullet points
+    report = re.sub(r'#+\s+', '', report)          # remove # headers
+    report = re.sub(r'\n{3,}', '\n\n', report)     # collapse extra newlines
 
-    # output_ids only contains NEW tokens (not the prompt)
-    report = tokenizer.decode(output_ids[0], skip_special_tokens=True).strip()
-
-    # Clean any remaining header artifacts
-    for marker in ["assistant", "ASSISTANT", "<|", "system", "user"]:
-        if marker in report:
-            report = report.split(marker)[-1].strip(" \n|>:")
+    # Keep only FINDINGS and IMPRESSION
+    if "FINDINGS" in report:
+        report = report[report.index("FINDINGS"):]
+    if "Additional" in report:
+        report = report[:report.index("Additional")].strip()
+    if "Patient" in report:
+        report = report[:report.index("Patient")].strip()
 
     report = clean_report(report)
-    return "FINDINGS: " + report if not report.startswith("FINDINGS") else report
+    return report.strip()
 
 
 @router.post("/report")
 async def report(file: UploadFile = File(...)):
-    classifier = models.classifier
+    classifier = models.tb_classifier
     device     = "cuda" if torch.cuda.is_available() else "cpu"
 
     content = await file.read()
@@ -117,11 +122,10 @@ async def report(file: UploadFile = File(...)):
     cam_norm      = results["cam_norm"]
     visual_tokens = results["visual_tokens"]
 
-    # ✅ compute these before passing to generate_report
     prediction = "TB Positive" if int(probs.argmax()) == 1 else "Normal"
     confidence = float(probs[1]) * 100
 
-    report_text = generate_report(visual_tokens, prediction, confidence)  # ✅ 3 args
+    report_text = generate_report(visual_tokens, prediction, confidence)
 
     torch.cuda.empty_cache()
 

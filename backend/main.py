@@ -17,7 +17,7 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],      # or your specific frontend URL
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -27,14 +27,10 @@ async def startup_event():
     print("Loading models into VRAM...")
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    clf, llama, tok = load_all_models(device)
-
-    models.classifier = clf
-    models.llama = llama
-    models.tokenizer = tok
+    # Only load classifier — LLaMA replaced by Groq API
     models.load_tb_model()
 
-    print("All models are ready for iference")
+    print("All models ready — using Groq for report generation")
 
 app.include_router(tb_router)
 app.include_router(diagnose_router)

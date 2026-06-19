@@ -14,7 +14,7 @@ class ModelContainer:
             print("Loading TB classifier once...")
             self.tb_classifier = RADDINOClassifier().to(DEVICE)
             # Add weights_only=False if you are loading local .pt files
-            state_dict = torch.load("tb_classifier (5).pt", map_location=DEVICE, weights_only=False)
+            state_dict = torch.load("models/tb_classifier (5).pt", map_location=DEVICE, weights_only=False)
             self.tb_classifier.load_state_dict(state_dict, strict=False)
             self.tb_classifier.eval()
         return self.tb_classifier
