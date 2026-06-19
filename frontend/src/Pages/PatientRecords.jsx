@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../AuthContext";
 
-const BASE_URL = "https://humorous-headache-reenter.ngrok-free.dev";
+const BASE_URL = "http://localhost:8000";
 
 export default function PatientRecords() {
   const { token, radiologistName } = useAuth();
