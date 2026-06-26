@@ -8,7 +8,7 @@ from PIL import Image
 from torchvision import transforms
 from sklearn.metrics import roc_auc_score, roc_curve, classification_report
 import matplotlib.pyplot as plt
-from dependencies import ModelContainer
+from backend.dependencies import ModelContainer
 from tqdm import tqdm
 
 # Initialize the PulmoVision model container
