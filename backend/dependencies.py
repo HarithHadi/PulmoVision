@@ -1,7 +1,7 @@
 # dependencies.py
 import torch
 from models_def import RADDINOClassifier, DEVICE
-
+from pathlib import Path
 
 class ModelContainer:
     def __init__(self):
@@ -12,9 +12,10 @@ class ModelContainer:
     def load_tb_model(self):
         if self.tb_classifier is None:
             print("Loading TB classifier once...")
-            self.tb_classifier = RADDINOClassifier().to(DEVICE)
-            # Add weights_only=False if you are loading local .pt files
-            state_dict = torch.load("models/tb_classifier (5).pt", map_location=DEVICE, weights_only=False)
+            self.tb_classifier = RADDINOClassifier().to(DEVICE)            
+            backend_dir = Path(__file__).resolve().parent
+            model_path = backend_dir / "models" / "tb_classifier (5).pt"
+            state_dict = torch.load(model_path, map_location=DEVICE, weights_only=False)
             self.tb_classifier.load_state_dict(state_dict, strict=False)
             self.tb_classifier.eval()
         return self.tb_classifier

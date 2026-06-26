@@ -16,3 +16,5 @@ offload_cache/
 .env
 *.pyc
 __pycache__/
+
+test_images/
