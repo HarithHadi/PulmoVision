@@ -18,10 +18,12 @@ def save_diagnosis(
     llama_diagnosis: Optional[str] = Form(None),
     radiologist_diagnosis: Optional[str] = Form(None),
     radiologist_notes: Optional[str] = Form(None),
+    clinical_data: Optional[str] = Form(None),
     xray_file: Optional[UploadFile] = File(None),
     heatmap_file: Optional[UploadFile] = File(None),
     current_user: dict = Depends(get_current_user)
 ):
+    import json
     uid = str(uuid.uuid4())[:8]
     xray_path = None
     heatmap_path = None
@@ -40,6 +42,14 @@ def save_diagnosis(
         with open(heatmap_path, "wb") as f:
             shutil.copyfileobj(heatmap_file.file, f)
 
+    # Parse clinical data JSON string
+    clinical_parsed = None
+    if clinical_data:
+        try:
+            clinical_parsed = json.loads(clinical_data)
+        except Exception:
+            clinical_parsed = None
+
     result = supabase.table("diagnoses").insert({
         "patient_id": patient_id,
         "radiologist_id": current_user["radiologist_id"],
@@ -49,6 +59,7 @@ def save_diagnosis(
         "llama_diagnosis": llama_diagnosis,
         "radiologist_diagnosis": radiologist_diagnosis,
         "radiologist_notes": radiologist_notes,
+        "clinical_data": clinical_parsed,
         "status": "pending"
     }).execute()
 

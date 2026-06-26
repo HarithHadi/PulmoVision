@@ -4,13 +4,15 @@ import cv2
 import numpy as np
 import torch
 from PIL import Image
-from fastapi import UploadFile, File, APIRouter
+from fastapi import UploadFile, File, APIRouter, Form
 from torchvision import transforms
 from dependencies import models
 from groq import Groq
 from dotenv import load_dotenv
 import re
 import os
+from typing import Optional
+import json
 
 load_dotenv()
 
@@ -57,11 +59,39 @@ def clean_report(text: str) -> str:
     return ' '.join(clean).strip()
 
 
-def generate_report(visual_tokens: torch.Tensor, prediction: str, confidence: float) -> str:
+def generate_report(visual_tokens: torch.Tensor, prediction: str, confidence: float, clinical: dict = {}) -> str:
+
+    # Build clinical summary
+    symptom_map = {
+        "cough":       "Cough ≥3 weeks",
+        "weightLoss":  "Unexplained weight loss/appetite loss",
+        "nightSweats": "Night sweats",
+        "fever":       "Low-grade fever",
+        "fatigue":     "Persistent fatigue",
+        "bloodSputum": "Haemoptysis",
+        "contactTB":   "Known TB contact",
+    }
+
+    present   = [symptom_map[k] for k, v in clinical.items() if v == "Yes" and k in symptom_map]
+    absent    = [symptom_map[k] for k, v in clinical.items() if v == "No"  and k in symptom_map]
+    unknown   = [symptom_map[k] for k, v in clinical.items() if v == "Unknown" and k in symptom_map]
+    notes     = clinical.get("duration", "")
+
+    clinical_summary = ""
+    if present:
+        clinical_summary += f"Symptoms present: {', '.join(present)}. "
+    if absent:
+        clinical_summary += f"Symptoms absent: {', '.join(absent)}. "
+    if unknown:
+        clinical_summary += f"Symptoms unknown: {', '.join(unknown)}. "
+    if notes:
+        clinical_summary += f"Additional notes: {notes}."
 
     prompt = (
-        f"TB classifier result: {prediction} ({confidence:.1f}% confidence).\n\n"
+        f"TB classifier result: {prediction} ({confidence:.1f}% confidence).\n"
+        f"Clinical context: {clinical_summary if clinical_summary else 'No clinical data provided.'}\n\n"
         f"Write a chest X-ray radiology report with exactly two sections: FINDINGS and IMPRESSION. "
+        f"Correlate the imaging findings with the clinical symptoms provided. "
         f"No headers, no bullet points, no patient information, no additional notes. "
         f"Plain text only. Start directly with FINDINGS:"
     )
@@ -75,7 +105,8 @@ def generate_report(visual_tokens: torch.Tensor, prediction: str, confidence: fl
                     "You are a radiologist writing concise radiology reports. "
                     "Output only FINDINGS and IMPRESSION sections in plain text. "
                     "No markdown, no bullet points, no bold text, no headers, no extra sections. "
-                    "Never reference patient history, prior scans, or information not in this image."
+                    "Correlate imaging findings with provided clinical symptoms. "
+                    "Never reference prior scans or information not in this image."
                 )
             },
             {
@@ -83,20 +114,19 @@ def generate_report(visual_tokens: torch.Tensor, prediction: str, confidence: fl
                 "content": prompt
             }
         ],
-        max_tokens=250,
+        max_tokens=300,
         temperature=0.1,
     )
 
     report = response.choices[0].message.content.strip()
 
-    # Strip markdown formatting
-    report = re.sub(r'\*\*.*?\*\*', '', report)  # remove **bold**
-    report = re.sub(r'\*.*?\*', '', report)        # remove *italic*
-    report = re.sub(r'^[-•]\s+', '', report, flags=re.MULTILINE)  # remove bullet points
-    report = re.sub(r'#+\s+', '', report)          # remove # headers
-    report = re.sub(r'\n{3,}', '\n\n', report)     # collapse extra newlines
+    # Strip markdown
+    report = re.sub(r'\*\*.*?\*\*', '', report)
+    report = re.sub(r'\*.*?\*', '', report)
+    report = re.sub(r'^[-•]\s+', '', report, flags=re.MULTILINE)
+    report = re.sub(r'#+\s+', '', report)
+    report = re.sub(r'\n{3,}', '\n\n', report)
 
-    # Keep only FINDINGS and IMPRESSION
     if "FINDINGS" in report:
         report = report[report.index("FINDINGS"):]
     if "Additional" in report:
@@ -109,9 +139,12 @@ def generate_report(visual_tokens: torch.Tensor, prediction: str, confidence: fl
 
 
 @router.post("/report")
-async def report(file: UploadFile = File(...)):
+async def report(
+    file: UploadFile = File(...),
+    clinical_data: Optional[str] = Form(None)
+):
     classifier = models.tb_classifier
-    device     = "cuda" if torch.cuda.is_available() else "cpu"
+    device = "cuda" if torch.cuda.is_available() else "cpu"
 
     content = await file.read()
     image   = Image.open(io.BytesIO(content)).convert("RGB")
@@ -125,7 +158,10 @@ async def report(file: UploadFile = File(...)):
     prediction = "TB Positive" if int(probs.argmax()) == 1 else "Normal"
     confidence = float(probs[1]) * 100
 
-    report_text = generate_report(visual_tokens, prediction, confidence)
+    # Parse clinical data
+    clinical = json.loads(clinical_data) if clinical_data else {}
+
+    report_text = generate_report(visual_tokens, prediction, confidence, clinical)
 
     torch.cuda.empty_cache()
 

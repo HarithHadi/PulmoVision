@@ -52,6 +52,18 @@ export default function TBDiagnosis() {
   const [searchResults, setSearchResults] = useState([]);
   const [selectedPatientId, setSelectedPatientId] = useState(null);
 
+  const [showClinical, setShowClinical] = useState(false);
+  const [clinicalData, setClinicalData] = useState({
+    cough: null,          // true/false
+    weightLoss: null,
+    nightSweats: null,
+    fever: null,
+    fatigue: null,
+    bloodSputum: null,
+    contactTB: null,
+    duration: "",         // free text
+  });
+
   const steps = [
     "Initializing RAD-DINO...",
     "Extracting patch tokens...",
@@ -120,6 +132,7 @@ export default function TBDiagnosis() {
     try {
       const form = new FormData();
       form.append("file", file);
+      form.append("clinical_data", JSON.stringify(clinicalData));
       const res = await fetch(API_URL, {
         method: "POST",
         headers: { "ngrok-skip-browser-warning": "true" },
@@ -250,6 +263,8 @@ export default function TBDiagnosis() {
         form.append("heatmap_file", heatmapBlob, "heatmap.png");
       }
 
+      if (clinicalData) form.append("clinical_data", JSON.stringify(clinicalData));
+
       await fetch(`${BASE_URL}/diagnoses/save`, {
         method: "POST",
         headers: {
@@ -264,6 +279,16 @@ export default function TBDiagnosis() {
       setPatientName(""); setPatientAge(""); setPatientSex("M");
       setPatientContact(""); setRadDiagnosis(""); setRadNotes("");
       setSelectedPatientId(null);
+      setClinicalData({          // ← add this
+        cough: null,
+        weightLoss: null,
+        nightSweats: null,
+        fever: null,
+        fatigue: null,
+        bloodSputum: null,
+        contactTB: null,
+        duration: "",
+      });
 
     } catch (err) {
       console.error(err);
@@ -352,7 +377,7 @@ export default function TBDiagnosis() {
             )}
 
             <button
-              onClick={analyze}
+              onClick={() => setShowClinical(true)}
               disabled={!file || loading}
               className="w-full py-3.5 rounded-xl font-semibold text-sm bg-green-400 hover:bg-green-300 active:bg-green-500 text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
@@ -469,7 +494,7 @@ export default function TBDiagnosis() {
                     >
                       <div className="flex items-center gap-3">
                         <span className="text-xs font-semibold text-slate-500 uppercase tracking-widest">AI Radiology Report</span>
-                        <span className="text-xs text-primary bg-background border border-border rounded px-2 py-0.5">LLaMA-3 · LoRA</span>
+                        <span className="text-xs text-primary bg-background border border-border rounded px-2 py-0.5">LLaMA-3 · Groq</span>
                       </div>
                       <svg className={`w-4 h-4 text-foreground transition-transform duration-300 ${reportOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                         <path d="M6 9l6 6 6-6"/>
@@ -477,8 +502,45 @@ export default function TBDiagnosis() {
                     </button>
                     <div className={`grid transition-all duration-300 ease-in-out ${reportOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
                       <div className="overflow-hidden">
-                        <div className="px-5 pb-5 pt-1 border-t border-border">
-                          <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{result.report}</p>
+                        <div className="px-5 pb-5 pt-3 border-t border-border space-y-3">
+                          {(() => {
+                            const text = result.report;
+                            const impressionIndex = text.indexOf("IMPRESSION");
+                            const findings = impressionIndex !== -1
+                              ? text.slice(0, impressionIndex).replace("FINDINGS:", "").trim()
+                              : text.replace("FINDINGS:", "").trim();
+                            const impression = impressionIndex !== -1
+                              ? text.slice(impressionIndex).replace("IMPRESSION:", "").trim()
+                              : null;
+
+                            return (
+                              <>
+                                {/* Findings */}
+                                <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                                    <p className="text-xs font-semibold text-blue-400 uppercase tracking-widest">Findings</p>
+                                  </div>
+                                  <p className="text-sm text-foreground leading-relaxed">{findings}</p>
+                                </div>
+
+                                {/* Impression */}
+                                {impression && (
+                                  <div className={`rounded-xl border p-4 ${
+                                    isTB ? "border-red-500/20 bg-red-500/5" : "border-green-500/20 bg-green-500/5"
+                                  }`}>
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <div className={`w-1.5 h-1.5 rounded-full ${isTB ? "bg-red-400" : "bg-green-400"}`} />
+                                      <p className={`text-xs font-semibold uppercase tracking-widest ${isTB ? "text-red-400" : "text-green-400"}`}>
+                                        Impression
+                                      </p>
+                                    </div>
+                                    <p className="text-sm text-foreground leading-relaxed">{impression}</p>
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
                         </div>
                       </div>
                     </div>
@@ -507,6 +569,73 @@ export default function TBDiagnosis() {
           </div>
         </div>
       </div>
+
+      {/* ── Clinical Context Modal ── */}
+      {showClinical && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 px-4">
+          <div className="bg-background border border-border rounded-2xl p-6 w-full max-w-md space-y-4 max-h-[90vh] overflow-y-auto">
+            <div>
+              <h2 className="text-base font-semibold text-foreground">Clinical Assessment</h2>
+              <p className="text-xs text-slate-500 mt-1">Answer the following before running the analysis. This helps generate a more accurate report.</p>
+            </div>
+
+            {[
+              { key: "cough",       label: "Has the patient been coughing for 3 weeks or longer?" },
+              { key: "weightLoss",  label: "Unexplained weight loss or loss of appetite?" },
+              { key: "nightSweats", label: "Night sweats?" },
+              { key: "fever",       label: "Low-grade fever, especially in the afternoons?" },
+              { key: "fatigue",     label: "Persistent fatigue or weakness?" },
+              { key: "bloodSputum", label: "Coughing up blood or blood-tinged sputum?" },
+              { key: "contactTB",   label: "Known contact with a TB-positive individual?" },
+            ].map(({ key, label }) => (
+              <div key={key} className="space-y-1.5">
+                <p className="text-xs text-foreground">{label}</p>
+                <div className="flex gap-2">
+                  {["Yes", "No", "Unknown"].map(opt => (
+                    <button
+                      key={opt}
+                      onClick={() => setClinicalData(p => ({ ...p, [key]: opt }))}
+                      className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                        clinicalData[key] === opt
+                          ? "bg-blue-600 border-blue-600 text-white"
+                          : "border-border text-slate-400 hover:text-foreground hover:border-border-hover"
+                      }`}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">Additional clinical notes (optional)</label>
+              <textarea
+                value={clinicalData.duration}
+                onChange={e => setClinicalData(p => ({ ...p, duration: e.target.value }))}
+                placeholder="e.g. symptoms started 2 months ago, patient is immunocompromised..."
+                rows={2}
+                className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-foreground outline-none focus:border-blue-500 resize-none"
+              />
+            </div>
+
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => setShowClinical(false)}
+                className="flex-1 py-2.5 rounded-xl text-sm border border-border text-slate-400 hover:text-foreground transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { setShowClinical(false); analyze(); }}
+                className="flex-1 py-2.5 rounded-xl text-sm bg-green-500 hover:bg-green-400 text-white font-semibold transition-all"
+              >
+                Run Analysis
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Welcome Modal ── */}
       {showWelcome && (

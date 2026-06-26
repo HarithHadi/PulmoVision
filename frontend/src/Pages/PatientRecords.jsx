@@ -264,11 +264,45 @@ export default function PatientRecords() {
 
             {/* LLaMA Report */}
             {selected.llama_diagnosis && (
-              <div>
-                <p className="text-xs text-slate-500 mb-2 uppercase tracking-widest font-medium">AI Report</p>
-                <div className="bg-background border border-border rounded-xl px-4 py-3">
-                  <p className="text-xs text-slate-400 leading-relaxed whitespace-pre-wrap">{selected.llama_diagnosis}</p>
-                </div>
+              <div className="space-y-2">
+                <p className="text-xs text-slate-500 uppercase tracking-widest font-medium">AI Report</p>
+                {(() => {
+                  const text = selected.llama_diagnosis;
+                  const impressionIndex = text.indexOf("IMPRESSION");
+                  const findings = impressionIndex !== -1
+                    ? text.slice(0, impressionIndex).replace("FINDINGS:", "").trim()
+                    : text.replace("FINDINGS:", "").trim();
+                  const impression = impressionIndex !== -1
+                    ? text.slice(impressionIndex).replace("IMPRESSION:", "").trim()
+                    : null;
+                  const isTB = selected.tb_probability >= 0.5;
+
+                  return (
+                    <>
+                      <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-3">
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                          <p className="text-xs font-semibold text-blue-400 uppercase tracking-widest">Findings</p>
+                        </div>
+                        <p className="text-xs text-slate-400 leading-relaxed">{findings}</p>
+                      </div>
+
+                      {impression && (
+                        <div className={`rounded-xl border p-3 ${
+                          isTB ? "border-red-500/20 bg-red-500/5" : "border-green-500/20 bg-green-500/5"
+                        }`}>
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <div className={`w-1.5 h-1.5 rounded-full ${isTB ? "bg-red-400" : "bg-green-400"}`} />
+                            <p className={`text-xs font-semibold uppercase tracking-widest ${isTB ? "text-red-400" : "text-green-400"}`}>
+                              Impression
+                            </p>
+                          </div>
+                          <p className="text-xs text-slate-400 leading-relaxed">{impression}</p>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             )}
 

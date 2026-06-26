@@ -1,3 +1,4 @@
-# config.py
-XRAY_SAVE_DIR = '/content/drive/MyDrive/PulmoVision/patients/xrays'
-HEATMAP_SAVE_DIR = '/content/drive/MyDrive/PulmoVision/patients/heatmaps'
+import os
+XRAY_SAVE_DIR    = os.path.join(os.path.dirname(__file__), 'patient_images', 'xrays')
+HEATMAP_SAVE_DIR = os.path.join(os.path.dirname(__file__), 'patient_images', 'heatmaps')
+

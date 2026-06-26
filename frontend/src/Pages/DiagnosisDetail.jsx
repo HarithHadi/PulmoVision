@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../AuthContext";
 
-const BASE_URL = "https://humorous-headache-reenter.ngrok-free.dev";
+const BASE_URL = "http://localhost:8000";
 
 export default function DiagnosisDetail() {
   const { state: d } = useLocation();
@@ -23,7 +23,6 @@ export default function DiagnosisDetail() {
           {
             headers: {
               "Authorization": `Bearer ${token}`,
-              "ngrok-skip-browser-warning": "true",
             },
           }
         );
@@ -138,6 +137,45 @@ export default function DiagnosisDetail() {
           </div>
         </div>
 
+        {/* Clinical Data */}
+        {d.clinical_data && (
+          <div className="bg-background border border-border rounded-2xl p-5 space-y-3">
+            <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Clinical Assessment</h2>
+            <div className="space-y-2">
+              {[
+                { key: "cough",       label: "Cough ≥3 weeks" },
+                { key: "weightLoss",  label: "Weight loss / loss of appetite" },
+                { key: "nightSweats", label: "Night sweats" },
+                { key: "fever",       label: "Low-grade fever" },
+                { key: "fatigue",     label: "Persistent fatigue" },
+                { key: "bloodSputum", label: "Haemoptysis" },
+                { key: "contactTB",   label: "Known TB contact" },
+              ].map(({ key, label }) => {
+                const val = d.clinical_data[key];
+                if (!val) return null;
+                return (
+                  <div key={key} className="flex items-center justify-between">
+                    <span className="text-xs text-slate-400">{label}</span>
+                    <span className={`text-xs font-medium px-2.5 py-1 rounded-lg border ${
+                      val === "Yes"     ? "text-red-400 bg-red-500/10 border-red-500/20" :
+                      val === "No"      ? "text-green-400 bg-green-500/10 border-green-500/20" :
+                                          "text-slate-400 bg-background border-border"
+                    }`}>
+                      {val}
+                    </span>
+                  </div>
+                );
+              })}
+              {d.clinical_data.duration && (
+                <div className="pt-2 border-t border-border">
+                  <p className="text-xs text-slate-500 mb-1">Additional notes</p>
+                  <p className="text-xs text-slate-400">{d.clinical_data.duration}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* X-ray Images */}
         {(d.xray_path || d.heatmap_path) && (
           <div className="bg-background border border-border rounded-2xl p-5 space-y-3">
@@ -176,15 +214,50 @@ export default function DiagnosisDetail() {
             </div>
           </div>
         )}
-
         {/* AI Report */}
         {d.llama_diagnosis && (
-          <div className="bg-background border border-border rounded-2xl p-5 space-y-3">
+          <div className="bg-background border border-border rounded-2xl p-5 space-y-4">
             <div className="flex items-center gap-3">
               <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest">AI Radiology Report</h2>
-              <span className="text-xs text-primary bg-background border border-border rounded px-2 py-0.5">LLaMA-3 · LoRA</span>
+              <span className="text-xs text-primary bg-background border border-border rounded px-2 py-0.5">LLaMA-3 · Groq</span>
             </div>
-            <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{d.llama_diagnosis}</p>
+
+            {(() => {
+              const text = d.llama_diagnosis;
+              const impressionIndex = text.indexOf("IMPRESSION");
+              const findings = impressionIndex !== -1 ? text.slice(0, impressionIndex).replace("FINDINGS:", "").trim() : text.replace("FINDINGS:", "").trim();
+              const impression = impressionIndex !== -1 ? text.slice(impressionIndex).replace("IMPRESSION:", "").trim() : null;
+
+              return (
+                <div className="space-y-3">
+                  {/* Findings */}
+                  <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                      <p className="text-xs font-semibold text-blue-400 uppercase tracking-widest">Findings</p>
+                    </div>
+                    <p className="text-sm text-foreground leading-relaxed">{findings}</p>
+                  </div>
+
+                  {/* Impression */}
+                  {impression && (
+                    <div className={`rounded-xl border p-4 ${
+                      d.tb_probability >= 0.5
+                        ? "border-red-500/20 bg-red-500/5"
+                        : "border-green-500/20 bg-green-500/5"
+                    }`}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className={`w-1.5 h-1.5 rounded-full ${d.tb_probability >= 0.5 ? "bg-red-400" : "bg-green-400"}`} />
+                        <p className={`text-xs font-semibold uppercase tracking-widest ${d.tb_probability >= 0.5 ? "text-red-400" : "text-green-400"}`}>
+                          Impression
+                        </p>
+                      </div>
+                      <p className="text-sm text-foreground leading-relaxed">{impression}</p>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
 
