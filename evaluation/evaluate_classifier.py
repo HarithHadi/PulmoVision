@@ -9,6 +9,7 @@ from torchvision import transforms
 from sklearn.metrics import roc_auc_score, roc_curve, classification_report
 import matplotlib.pyplot as plt
 from dependencies import ModelContainer
+from tqdm import tqdm
 
 # Initialize the PulmoVision model container
 models = ModelContainer()
@@ -25,29 +26,30 @@ y_true = []
 y_scores = []
 y_pred = []
 
-# Target the extracted Kaggle dataset directory
-dataset_dir = Path("test_images/images")
+dataset_root = Path("TB_Chest_Radiography_Database")
 
-# Parse the single-directory structure
-for img_path in dataset_dir.glob("*.png"):
-    # Extract the label from the last character of the filename (e.g., MCUCXR_0001_0 -> 0)
-    label_str = img_path.stem[-1]
-    
-    if label_str not in ["0", "1"]:
-        continue
-        
-    label = int(label_str)
-    
-    image = Image.open(img_path).convert("RGB")
-    tensor = preprocess(image).unsqueeze(0).to(device)
-    
-    # Execute the forward pass through the Rad-DINO pipeline
-    results = models.tb_classifier.run_pipeline(tensor)
-    prob = float(results["probs"][1])
-    
-    y_scores.append(prob)
-    y_true.append(label)
-    y_pred.append(1 if prob >= 0.5 else 0)
+class_mapping = {
+    "Normal": 0,
+    "Tuberculosis": 1
+}
+
+for class_name, label in class_mapping.items():
+
+    class_dir = dataset_root / class_name
+
+    print(f"Processing {class_name}...")
+
+    for img_path in tqdm(class_dir.glob("*.png"), desc=class_name):
+
+        image = Image.open(img_path).convert("RGB")
+        tensor = preprocess(image).unsqueeze(0).to(device)
+
+        results = models.tb_classifier.run_pipeline(tensor)
+        prob = float(results["probs"][1])
+
+        y_scores.append(prob)
+        y_true.append(label)
+        y_pred.append(1 if prob >= 0.5 else 0)
 
 # Failsafe in case the directory path is incorrect
 if not y_true:
