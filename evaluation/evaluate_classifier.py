@@ -1,8 +1,10 @@
 import sys
-sys.path.append('../backend')
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
 import torch
-import numpy as np
 from pathlib import Path
 from PIL import Image
 from torchvision import transforms
@@ -14,6 +16,7 @@ from tqdm import tqdm
 # Initialize the PulmoVision model container
 models = ModelContainer()
 models.load_tb_model() # Loads the frozen Rad-DINO backbone
+
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 preprocess = transforms.Compose([
@@ -36,7 +39,6 @@ class_mapping = {
 for class_name, label in class_mapping.items():
 
     class_dir = dataset_root / class_name
-
     print(f"Processing {class_name}...")
 
     for img_path in tqdm(class_dir.glob("*.png"), desc=class_name):
@@ -44,7 +46,9 @@ for class_name, label in class_mapping.items():
         image = Image.open(img_path).convert("RGB")
         tensor = preprocess(image).unsqueeze(0).to(device)
 
-        results = models.tb_classifier.run_pipeline(tensor)
+        with torch.no_grad():
+            results = models.tb_classifier.run_pipeline(tensor)
+
         prob = float(results["probs"][1])
 
         y_scores.append(prob)
