@@ -1,6 +1,6 @@
 # dependencies.py
 import torch
-from models_def import RADDINOClassifier, DEVICE
+from .models_def import RADDINOClassifier, DEVICE
 from pathlib import Path
 
 class ModelContainer:
