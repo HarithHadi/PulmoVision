@@ -1,22 +1,21 @@
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 import torch
+import numpy as np
 from pathlib import Path
 from PIL import Image
 from torchvision import transforms
 from sklearn.metrics import roc_auc_score, roc_curve, classification_report
 import matplotlib.pyplot as plt
-from backend.dependencies import ModelContainer
 from tqdm import tqdm
+from backend.dependencies import ModelContainer
 
-# Initialize the PulmoVision model container
+# Load model
 models = ModelContainer()
-models.load_tb_model() # Loads the frozen Rad-DINO backbone
-
+models.load_tb_model()
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 preprocess = transforms.Compose([
@@ -29,36 +28,31 @@ y_true = []
 y_scores = []
 y_pred = []
 
-dataset_root = Path("TB_Chest_Radiography_Database")
+dataset_root = Path("test_images") / "TB_Chest_Radiography_Database"
 
-class_mapping = {
-    "Normal": 0,
-    "Tuberculosis": 1
-}
 
-for class_name, label in class_mapping.items():
+folders = [
+    (1, dataset_root / "Tuberculosis"),
+    (0, dataset_root / "Normal"),
+]
 
-    class_dir = dataset_root / class_name
-    print(f"Processing {class_name}...")
 
-    for img_path in tqdm(class_dir.glob("*.png"), desc=class_name):
+for label, folder in folders:
+    image_files = list(folder.glob("*.png"))
 
+    print(folder)
+    print("Found", len(image_files), "images")
+
+    for img_path in tqdm(image_files, desc=f"Processing {folder.name}", unit="image"):
         image = Image.open(img_path).convert("RGB")
         tensor = preprocess(image).unsqueeze(0).to(device)
 
-        with torch.no_grad():
-            results = models.tb_classifier.run_pipeline(tensor)
+        results = models.tb_classifier.run_pipeline(tensor)
 
         prob = float(results["probs"][1])
-
         y_scores.append(prob)
         y_true.append(label)
         y_pred.append(1 if prob >= 0.5 else 0)
-
-# Failsafe in case the directory path is incorrect
-if not y_true:
-    print("No images processed. Please verify your dataset_dir path.")
-    sys.exit()
 
 auc = roc_auc_score(y_true, y_scores)
 print(f"\nAUC-ROC: {auc:.4f}")
