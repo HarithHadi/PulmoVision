@@ -59,9 +59,12 @@ def clean_report(text: str) -> str:
     return ' '.join(clean).strip()
 
 
-def generate_report(visual_tokens: torch.Tensor, prediction: str, confidence: float, clinical: dict = {}) -> str:
+import base64
+from PIL import Image
+import io
 
-    # Build clinical summary
+def generate_report(image: Image.Image, prediction: str, confidence: float, clinical: dict = {}) -> str:
+
     symptom_map = {
         "cough":       "Cough ≥3 weeks",
         "weightLoss":  "Unexplained weight loss/appetite loss",
@@ -72,32 +75,34 @@ def generate_report(visual_tokens: torch.Tensor, prediction: str, confidence: fl
         "contactTB":   "Known TB contact",
     }
 
-    present   = [symptom_map[k] for k, v in clinical.items() if v == "Yes" and k in symptom_map]
-    absent    = [symptom_map[k] for k, v in clinical.items() if v == "No"  and k in symptom_map]
-    unknown   = [symptom_map[k] for k, v in clinical.items() if v == "Unknown" and k in symptom_map]
-    notes     = clinical.get("duration", "")
+    present = [symptom_map[k] for k, v in clinical.items() if v == "Yes"     and k in symptom_map]
+    absent  = [symptom_map[k] for k, v in clinical.items() if v == "No"      and k in symptom_map]
+    unknown = [symptom_map[k] for k, v in clinical.items() if v == "Unknown" and k in symptom_map]
+    notes   = clinical.get("duration", "")
 
     clinical_summary = ""
-    if present:
-        clinical_summary += f"Symptoms present: {', '.join(present)}. "
-    if absent:
-        clinical_summary += f"Symptoms absent: {', '.join(absent)}. "
-    if unknown:
-        clinical_summary += f"Symptoms unknown: {', '.join(unknown)}. "
-    if notes:
-        clinical_summary += f"Additional notes: {notes}."
+    if present: clinical_summary += f"Symptoms present: {', '.join(present)}. "
+    if absent:  clinical_summary += f"Symptoms absent: {', '.join(absent)}. "
+    if unknown: clinical_summary += f"Symptoms unknown: {', '.join(unknown)}. "
+    if notes:   clinical_summary += f"Additional notes: {notes}."
+
+    # Convert PIL image to base64
+    buffer = io.BytesIO()
+    image.save(buffer, format="JPEG")
+    image_b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
     prompt = (
         f"TB classifier result: {prediction} ({confidence:.1f}% confidence).\n"
         f"Clinical context: {clinical_summary if clinical_summary else 'No clinical data provided.'}\n\n"
-        f"Write a chest X-ray radiology report with exactly two sections: FINDINGS and IMPRESSION. "
+        f"Analyse the chest X-ray image provided. "
+        f"Write a radiology report with exactly two sections: FINDINGS and IMPRESSION. "
         f"Correlate the imaging findings with the clinical symptoms provided. "
         f"No headers, no bullet points, no patient information, no additional notes. "
         f"Plain text only. Start directly with FINDINGS:"
     )
 
     response = groq_client.chat.completions.create(
-        model="llama-3.1-8b-instant",
+        model="meta-llama/llama-4-scout-17b-16e-instruct",  # vision-capable model
         messages=[
             {
                 "role": "system",
@@ -111,7 +116,18 @@ def generate_report(visual_tokens: torch.Tensor, prediction: str, confidence: fl
             },
             {
                 "role": "user",
-                "content": prompt
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{image_b64}"
+                        }
+                    },
+                    {
+                        "type": "text",
+                        "text": prompt
+                    }
+                ]
             }
         ],
         max_tokens=300,
@@ -161,7 +177,7 @@ async def report(
     # Parse clinical data
     clinical = json.loads(clinical_data) if clinical_data else {}
 
-    report_text = generate_report(visual_tokens, prediction, confidence, clinical)
+    report_text = generate_report(image, prediction, confidence, clinical)
 
     torch.cuda.empty_cache()
 
