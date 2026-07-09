@@ -1,5 +1,9 @@
 #Models
 *.pt
+
+# EXCEPTION: Do not ignore this specific file
+!tb_classifier (5).pt
+
 lora_weights/
 lora_weights(2)/
 lora_weights(3)/
