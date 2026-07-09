@@ -102,7 +102,7 @@ def generate_report(image: Image.Image, prediction: str, confidence: float, clin
     )
 
     response = groq_client.chat.completions.create(
-        model="meta-llama/llama-4-scout-17b-16e-instruct",  # vision-capable model
+        model="meta-llama/llama-4-scout-17b-16e-instruct", 
         messages=[
             {
                 "role": "system",
