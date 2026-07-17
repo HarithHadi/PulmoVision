@@ -28,7 +28,13 @@ y_true = []
 y_scores = []
 y_pred = []
 
-dataset_root = Path("test_images") / "TB_Chest_Radiography_Database"
+PROJECT_ROOT = Path(__file__).resolve().parent
+
+dataset_root = (
+    PROJECT_ROOT
+    / "test_images"
+    / "TB_Chest_Radiography_Database"
+)
 
 
 folders = [
@@ -70,3 +76,37 @@ plt.title("ROC Curve — PulmoVision TB Classifier")
 plt.legend()
 plt.savefig("roc_curve.png")
 print("Saved roc_curve.png")
+
+
+models = [
+    "Grey-box",
+    "ReXTrust",
+    "Qwen0.5B\nPRM",
+    "Qwen3B\nPRM",
+    "PulmoVision"
+]
+
+aurocs = [
+    0.701,
+    0.819,
+    0.834,
+    0.841,
+    auc
+]
+
+plt.figure(figsize=(8,5))
+bars = plt.bar(models, aurocs)
+
+plt.ylabel("AUROC")
+plt.ylim(0.6, 1.0)
+plt.title("AUROC Comparison")
+
+for bar in bars:
+    plt.text(
+        bar.get_x()+bar.get_width()/2,
+        bar.get_height()+0.005,
+        f"{bar.get_height():.3f}",
+        ha='center'
+    )
+
+plt.savefig("auroc_comparison.png", dpi=300)

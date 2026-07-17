@@ -1,7 +1,15 @@
 # dependencies.py
+
 import torch
-from .models_def import RADDINOClassifier, DEVICE
 from pathlib import Path
+from .models_def import RADDINOClassifier, DEVICE
+
+MODEL_PATH = (
+    Path(__file__).resolve().parent
+    / "models"
+    / "tb_classifier (5).pt"
+)
+
 
 class ModelContainer:
     def __init__(self):
@@ -12,17 +20,23 @@ class ModelContainer:
     def load_tb_model(self):
         if self.tb_classifier is None:
             print("Loading TB classifier once...")
-            self.tb_classifier = RADDINOClassifier().to(DEVICE)            
-            backend_dir = Path(__file__).resolve().parent
-            model_path = backend_dir / "models" / "tb_classifier (5).pt"
-            state_dict = torch.load(model_path, map_location=DEVICE, weights_only=False)
+
+            self.tb_classifier = RADDINOClassifier().to(DEVICE)
+
+            state_dict = torch.load(
+                MODEL_PATH,
+                map_location=DEVICE,
+                weights_only=False
+            )
+
             self.tb_classifier.load_state_dict(state_dict, strict=False)
             self.tb_classifier.eval()
+
         return self.tb_classifier
 
-# Create one instance for the whole app
+
 models = ModelContainer()
 
-# Helper for FastAPI Dependency Injection
+
 def get_tb_model():
     return models.load_tb_model()
