@@ -102,7 +102,7 @@ def generate_report(image: Image.Image, prediction: str, confidence: float, clin
     )
 
     response = groq_client.chat.completions.create(
-        model="meta-llama/llama-4-scout-17b-16e-instruct", 
+        model="qwen/qwen3.6-27b", 
         messages=[
             {
                 "role": "system",
@@ -131,7 +131,9 @@ def generate_report(image: Image.Image, prediction: str, confidence: float, clin
             }
         ],
         max_tokens=300,
-        temperature=0.1,
+        temperature=0.7,
+        top_p=0.80,
+        reasoning_effort= "none"
     )
 
     report = response.choices[0].message.content.strip()

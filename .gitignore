@@ -13,6 +13,9 @@ models/
 offload_cache/
 
 
+backend/patient_images/
+
+
 .env
 *.pyc
 __pycache__/

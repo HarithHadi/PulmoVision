@@ -69,7 +69,7 @@ export default function TBDiagnosis() {
     "Extracting patch tokens...",
     "Computing GradCAM heatmap...",
     "Generating visual tokens...",
-    "LLaMA-3 generating report...",
+    "LLaMA-4-Scout generating report...",
     "Almost done...",
   ];
 
@@ -149,7 +149,7 @@ export default function TBDiagnosis() {
     }
   };
 
-  // Login submit — works for both welcome and save contexts
+  
   const handleLogin = async () => {
     setLoginLoading(true);
     setLoginError("");
@@ -173,7 +173,7 @@ export default function TBDiagnosis() {
       setRadId("");
       setPassword("");
 
-      // If they logged in from the save button, open save modal immediately
+      
       if (loginContext === "save") {
         setShowSave(true);
       }
@@ -279,7 +279,7 @@ export default function TBDiagnosis() {
       setPatientName(""); setPatientAge(""); setPatientSex("M");
       setPatientContact(""); setRadDiagnosis(""); setRadNotes("");
       setSelectedPatientId(null);
-      setClinicalData({          // ← add this
+      setClinicalData({          
         cough: null,
         weightLoss: null,
         nightSweats: null,
@@ -309,7 +309,7 @@ export default function TBDiagnosis() {
         <div className="mb-10 sm:mb-12">
           <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
             <span className="inline-block text-xs font-semibold tracking-widest text-primary bg-background border border-border/60 px-3 py-1 rounded-full">
-              RAD-DINO · GradCAM · LLaMA-3
+              RAD-DINO · GradCAM · LLaMA-4-Scout
             </span>
             {token && (
               <div className="flex items-center gap-3">
@@ -405,7 +405,7 @@ export default function TBDiagnosis() {
               {[
                 { label: "Visual Encoder", value: "RAD-DINO" },
                 { label: "Localization",   value: "GradCAM" },
-                { label: "Report Model",   value: "LLaMA-3.2-3B" },
+                { label: "Report Model",   value: "LLaMA-4-Scout" },
                 { label: "Dataset",        value: "Montgomery + Shenzhen" },
               ].map(({ label, value }) => (
                 <div key={label} className="bg-background border border-border rounded-xl px-3 py-2.5">
@@ -494,7 +494,7 @@ export default function TBDiagnosis() {
                     >
                       <div className="flex items-center gap-3">
                         <span className="text-xs font-semibold text-slate-500 uppercase tracking-widest">AI Radiology Report</span>
-                        <span className="text-xs text-primary bg-background border border-border rounded px-2 py-0.5">LLaMA-3 · Groq</span>
+                        <span className="text-xs text-primary bg-background border border-border rounded px-2 py-0.5">LLaMA-4-Scout · Groq</span>
                       </div>
                       <svg className={`w-4 h-4 text-foreground transition-transform duration-300 ${reportOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                         <path d="M6 9l6 6 6-6"/>

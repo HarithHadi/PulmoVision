@@ -19,7 +19,7 @@ const features = [
     ),
     title: "Reasoning Engine",
     desc: "LLaMA-3-8B language model generates structured clinical reports from visual embeddings.",
-    tag: "meta-llama/Llama-3.2-3B-Instruct",
+    tag: "meta-llama/Llama-4-scout",
   },
   {
     icon: (

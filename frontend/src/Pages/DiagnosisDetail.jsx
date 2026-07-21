@@ -122,20 +122,7 @@ export default function DiagnosisDetail() {
             ))}
           </div>
         </div>
-
-        {/* Status */}
-        <div className="bg-background border border-border rounded-2xl p-5 flex items-center justify-between">
-          <div>
-            <p className="text-xs text-slate-500 mb-1">Diagnosis Status</p>
-            <span className={`text-xs font-medium px-2.5 py-1 rounded-lg border capitalize ${statusColor(d.status)}`}>
-              {d.status}
-            </span>
-          </div>
-          <div className="text-right">
-            <p className="text-xs text-slate-500 mb-1">Reviewed by</p>
-            <p className="text-sm font-medium text-foreground">{radiologistName ?? "—"}</p>
-          </div>
-        </div>
+ 
 
         {/* Clinical Data */}
         {d.clinical_data && (

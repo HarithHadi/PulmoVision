@@ -156,7 +156,7 @@ export default function PatientRecords() {
                       <th className="text-left px-5 py-3 font-medium">Age / Sex</th>
                       <th className="text-left px-5 py-3 font-medium">TB Probability</th>
                       <th className="text-left px-5 py-3 font-medium">Prediction</th>
-                      <th className="text-left px-5 py-3 font-medium">Status</th>
+                      <th className="text-left px-5 py-3 font-medium">Created At</th>
                       <th className="text-left px-5 py-3 font-medium">Date</th>
                       <th className="px-5 py-3" />
                     </tr>
@@ -186,11 +186,6 @@ export default function PatientRecords() {
                           ) : (
                             <span className="text-green-400 font-medium">Normal</span>
                           )}
-                        </td>
-                        <td className="px-5 py-4">
-                          <span className={`text-xs font-medium px-2.5 py-1 rounded-lg border capitalize ${statusColor(d.status)}`}>
-                            {d.status}
-                          </span>
                         </td>
                         <td className="px-5 py-4 text-slate-500 text-xs">
                           {new Date(d.created_at).toLocaleDateString("en-MY", {
@@ -252,14 +247,6 @@ export default function PatientRecords() {
                   {(selected.tb_probability * 100).toFixed(1)}%
                 </p>
               </div>
-            </div>
-
-            {/* Status */}
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-slate-500">Status</span>
-              <span className={`text-xs font-medium px-2.5 py-1 rounded-lg border capitalize ${statusColor(selected.status)}`}>
-                {selected.status}
-              </span>
             </div>
 
             {/* LLaMA Report */}
